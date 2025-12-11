@@ -1,0 +1,779 @@
+#![allow(dead_code)]  //remove warnings about unused code
+
+use rand::seq::{IndexedRandom, SliceRandom};
+use rand::Rng;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Resource {
+    Brick,
+    Lumber,
+    Wool,
+    Grain,
+    Ore,
+    Desert,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnPhase{
+    RollResources,
+    Trade,
+    Build,
+    EndTurn,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum DevCard {
+    Knight,
+    VictoryPoint,
+    Monopoly,
+    RoadBuilding,
+    YearOfPlenty,
+}
+
+//vertices at hex corners
+#[derive(Debug)]
+pub struct Vertex {
+    pub id: usize,
+    pub neighbors: HashSet<usize>, // neighboring vertices
+}
+
+impl Vertex {
+    //creates a vertex
+    pub fn new(id: usize) -> Self {
+        Vertex {
+            id,
+            neighbors: HashSet::new(),
+        }
+    }
+
+    //adds a neighboring vertex
+    pub fn connect(&mut self, other: usize) {
+        self.neighbors.insert(other);
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tile {
+    pub resource: Resource,
+    pub number_token: Option<u8>,
+    pub vertices: [usize; 6], //6 corners
+}
+
+#[derive(Debug)]
+pub struct Player {
+    pub id: usize,
+    pub name: String,
+    pub resources: HashMap<Resource, u8>,
+    pub settlements: HashSet<usize>,
+    pub cities: HashSet<usize>,
+    pub roads: HashSet<(usize, usize)>,
+    pub dev_cards: Vec<DevCard>,
+    pub knights_played: u8,
+    pub victory_points: u8,
+}
+
+impl Player {
+    pub fn new(id: usize, name: &str) -> Self {
+        Self {
+            id,
+            name: name.to_string(),
+            resources: HashMap::new(),
+            settlements: HashSet::new(),
+            cities: HashSet::new(),
+            roads: HashSet::new(),
+            dev_cards: Vec::new(),
+            knights_played: 0,
+            victory_points: 0,
+        }
+    }
+}
+
+pub struct Game {
+    pub players: Vec<Player>,
+    pub vertices: Vec<Vertex>,
+    pub tiles: Vec<Tile>,
+    pub robber_tile: usize,
+    pub current_player: usize,
+    pub turn_phase: TurnPhase,
+    rng: rand::rngs::ThreadRng, //local random number generator
+}
+
+impl Game {
+    pub fn new(player_names: Vec<&str>) -> Self {
+
+        //local random number generator
+        let mut rng = rand::rng();
+        //checks if the player number is 2-4
+        assert!((2..=4).contains(&player_names.len()));
+
+        let players: Vec<Player> = player_names
+            //takes list of names
+            .into_iter()
+            //assigns IDs
+            .enumerate()
+            //creates Player instances
+            .map(|(id, name)| Player::new(id, name))
+            //collects the Players into a vector
+            .collect();
+
+        // Generate board
+        let (vertices, tiles) = Game::generate_board(&mut rng);
+
+        // Robber starts on desert tile
+        let robber_tile = tiles
+            .iter()
+            .position(|t| t.resource == Resource::Desert)
+            .expect("There must be a desert tile");
+
+        Game {
+            players,
+            vertices,
+            tiles,
+            robber_tile,
+            current_player: 0,
+            turn_phase: TurnPhase::RollResources,
+            rng,
+        }
+    }
+
+    pub fn generate_board_from_coords(
+        rng: &mut rand::rngs::ThreadRng,
+        hex_coords: Vec<(i32, i32)>
+    ) -> (Vec<Vertex>, Vec<Tile>) {
+
+        let mut vertices: Vec<Vertex> = Vec::new();
+        let mut vertex_map: HashMap<(i32, i32), usize> = HashMap::new();
+        let mut tiles: Vec<Tile> = Vec::new();
+
+        //standard resources for 19 tiles
+        let mut resource_pool = vec![
+            Resource::Brick, Resource::Brick, Resource::Brick,
+            Resource::Lumber, Resource::Lumber, Resource::Lumber, Resource::Lumber,
+            Resource::Wool, Resource::Wool, Resource::Wool, Resource::Wool,
+            Resource::Grain, Resource::Grain, Resource::Grain, Resource::Grain,
+            Resource::Ore, Resource::Ore, Resource::Ore,
+            Resource::Desert,
+        ];
+        //randomizes resources
+        resource_pool.shuffle(rng);
+
+        //standard tokens
+        let mut number_pool = vec![2,3,3,4,4,5,5,6,6,
+                                            8,8,9,9,10,10,11,11,12];
+        //randomizes tokens
+        number_pool.shuffle(rng);
+
+        //hex tile size
+        //currently set to 1.0 but can be adjusted
+        let size = 1.0_f32;
+        //square root of 3
+        let sqrt3 = 1.7320508075688772_f32;
+
+        //hex corner offsets
+        //used to calculate corner coodinates later
+        const CORNERS: [(f32, f32); 6] = [
+            ( 0.0,     -1.0),
+            ( 0.8660254, -0.5),
+            ( 0.8660254,  0.5),
+            ( 0.0,      1.0),
+            (-0.8660254, 0.5),
+            (-0.8660254,-0.5),
+        ];
+
+        for (i, &(q, r)) in hex_coords.iter().enumerate() {
+            //gives the hex a random resource
+            let resource = resource_pool[i % resource_pool.len()]; //modulo if the board has more than 19 hexes
+            //gives the hex a random token number
+            //desert gets None
+            //2 if token pool runs out
+            let number_token =
+                if resource == Resource::Desert {
+                    None
+                } else {
+                    Some(number_pool.pop().unwrap_or(2))
+                };
+
+            //turns axial coordinates into pixel coordinates
+            let cx = size * (sqrt3 * q as f32 + (sqrt3 / 2.0) * r as f32);  //horizontal position of the hex center
+            let cy = size * ((3.0 / 2.0) * r as f32);   //vertical position of the hex center
+
+            let mut tile_vertex_indices = [0usize; 6];
+
+            for (corner_i, &(dx, dy)) in CORNERS.iter().enumerate() {
+                //pixel coordinates of corner vertices
+                //adding the offsets to the hex center location considering size
+                let vx = cx + dx * size;
+                let vy = cy + dy * size;
+
+                //converting the pixel locations into keys
+                //* 1000 to consider float point precision errors
+                let key = (
+                    (vx * 1000.0).round() as i32,
+                    (vy * 1000.0).round() as i32,
+                );
+
+                //check if corner exists in vertex map
+                //if yes reuse its index
+                let v_idx = if let Some(&idx) = vertex_map.get(&key) {
+                    idx
+                //if not add it to vertex map
+                } else {
+                    let idx = vertices.len();
+                    vertices.push(Vertex::new(idx));
+                    vertex_map.insert(key, idx);
+                    idx
+                };
+
+                tile_vertex_indices[corner_i] = v_idx;
+            }
+
+            tiles.push(Tile {
+                resource,
+                number_token,
+                vertices: tile_vertex_indices,
+            });
+        }
+
+        //connects neighbors bidirectionally
+        for tile in &tiles {
+            for i in 0..6 {
+                let v1 = tile.vertices[i];
+                let v2 = tile.vertices[(i + 1) % 6];
+                vertices[v1].connect(v2);
+                vertices[v2].connect(v1);
+            }
+        }
+
+        (vertices, tiles)
+    }
+    
+    pub fn generate_board(rng: &mut rand::rngs::ThreadRng) -> (Vec<Vertex>, Vec<Tile>) {
+        
+        //hex coordinates for a normal 19 tile map
+        let hex_coords = vec![
+            (0,-2), (1,-2), (2,-2),
+            (-1,-1), (0,-1), (1,-1), (2,-1),
+            (-2,0), (-1,0), (0,0), (1,0), (2,0),
+            (-2,1), (-1,1), (0,1), (1,1),
+            (-2,2), (-1,2), (0,2)
+        ];
+
+        Self::generate_board_from_coords(rng, hex_coords)
+    }
+
+    pub fn generate_board_custom(
+        rng: &mut rand::rngs::ThreadRng,
+
+        //vector of coordinates for custom shaped boards
+        hex_coords: Vec<(i32, i32)>,
+    ) -> (Vec<Vertex>, Vec<Tile>) {
+        
+        Self::generate_board_from_coords(rng, hex_coords)
+    }
+
+    //check if the current player has 10 victory points
+    fn check_for_winner(&self) -> Option<usize> {
+        let current_player = &self.players[self.current_player];
+        if current_player.victory_points >= 10 {
+            Some(current_player.id)
+        } else {
+            None
+        }
+    }
+
+    //turn phase transitions
+    pub fn next_phase(&mut self) {
+        self.turn_phase = match self.turn_phase {
+            TurnPhase::RollResources => TurnPhase::Trade,
+            TurnPhase::Trade => TurnPhase::Build,
+            TurnPhase::Build => TurnPhase::EndTurn,
+            TurnPhase::EndTurn => {
+                //when turn ends it moves to the next player
+                //and starts with roll phase
+                self.next_turn();
+                TurnPhase::RollResources
+            },
+        };
+
+        if let Some(winner_id) = self.check_for_winner() {
+            println!("Player {} wins the game!", winner_id);
+        }
+    }
+
+    //starts the turn and sets the phase to roll phase
+    pub fn start_turn(&mut self) {
+        self.turn_phase = TurnPhase::RollResources;
+    }
+
+    //ends the turn
+    pub fn end_turn(&mut self) {
+        self.turn_phase = TurnPhase::EndTurn;
+    }
+
+    //gives the turn to the next player
+    pub fn next_turn(&mut self) {
+        self.current_player = (self.current_player + 1) % self.players.len(); //modulo for looping
+        self.start_turn();
+    }
+
+    //2d6 rolls
+    pub fn roll_dice(&mut self) -> u8 {
+        let die1 = self.rng.random_range(1..=6);
+        let die2 = self.rng.random_range(1..=6);
+        let total = die1 + die2;
+
+        if total == 7 {
+            self.handle_robber();
+        } else {
+            self.distribute_resources(total);
+        }
+
+        total
+    }
+
+    fn distribute_resources(&mut self, dice_roll: u8) {
+        for (i, tile) in self.tiles.iter().enumerate() {
+            //if the tile has the same token number as dice roll
+            //if it doesnt have the robber
+            if tile.number_token == Some(dice_roll) && i != self.robber_tile {
+                for &vertex_idx in &tile.vertices {
+                    for player in &mut self.players {
+                        let mut amount = 0;
+                        //+1 for settlements
+                        if player.settlements.contains(&vertex_idx) { amount += 1; }
+                        //+2 for cities
+                        if player.cities.contains(&vertex_idx) { amount += 2; }
+                        if amount > 0 {
+                            //if the player doesnt have the resource already inserts a 0
+                            //adds resources
+                            *player.resources.entry(tile.resource).or_insert(0) += amount;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    fn handle_robber(&mut self) {
+        
+        //checks for each player if they have more than 7 resources
+        for player in &mut self.players {
+            if player.resources.values().sum::<u8>() > 7 {
+                //discarded amount is half
+                let discard_amount = player.resources.values().sum::<u8>() / 2;
+
+                let mut discarded = 0;
+                //creates a vector of players resources
+                let mut resource_keys: Vec<Resource> = player.resources.keys().cloned().collect();
+                //randomizes resources
+                resource_keys.shuffle(&mut self.rng);
+
+                //discards untill the discard amount is fulfilled
+                while discarded < discard_amount {
+                    for resource in resource_keys.iter() {
+                        if let Some(amount) = player.resources.get_mut(resource) {
+                            if *amount > 0 {
+                                *amount -= 1;
+                                discarded += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        //checks for available tiles for the robber
+        let available_tiles: Vec<usize> = self.tiles.iter()
+            .enumerate()
+            //has to move to a new tile
+            .filter(|(idx, _)| *idx != self.robber_tile)
+            .map(|(idx, _)| idx)
+            .collect();
+
+        //prompts the current player to choose a tile
+        let current_player = &self.players[self.current_player];
+        println!("Player {}: Choose a tile to place the robber:", current_player.name);
+        //shows all available tiles
+        for (i, tile) in available_tiles.iter().enumerate() {
+            let tile_resource = &self.tiles[*tile].resource;
+            println!("Option {}: Tile {} with resource {:?}", i + 1, *tile, tile_resource);
+        }
+
+        //placeholder untill implemented IO
+        //choses the first available tile for simplicity
+        let chosen_tile = available_tiles[0];
+
+        //moves the robber
+        self.robber_tile = chosen_tile;
+
+        let robber_tile = &self.tiles[self.robber_tile];
+
+        //gathers player IDs from players that can be robbed
+        let robbable_players: Vec<usize> = robber_tile.vertices.iter()
+            .filter_map(|&vertex_idx| {
+                self.players.iter().find(|p| p.settlements.contains(&vertex_idx) || p.cities.contains(&vertex_idx))
+            })
+            .map(|p| p.id)
+            .collect();
+
+        if robbable_players.is_empty() {
+            println!("No players to rob");
+            return;
+        }
+
+        //prompts the current player to choose a player
+        println!("Players to rob:");
+        //shows available players
+        for (i, player_id) in robbable_players.iter().enumerate() {
+            let player = &self.players[*player_id];
+            println!("Option {}: Player {}", i + 1, player.name);
+        }
+
+        //placeholder untill implemented IO
+        //choses the first available player for simplicity
+        let victim_id = robbable_players[0];
+
+        let robbed_player = &mut self.players[victim_id];
+
+        //makes a vector of available resources to steal from the chosen player
+        let available_resources: Vec<Resource> = robbed_player.resources
+            .iter()
+            .filter_map(|(resource, &amount)| {
+                if amount > 0 {
+                    Some(*resource)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        //ends the function if no available resources
+        if available_resources.is_empty() {
+            println!("Player {} has no resources to steal!", robbed_player.name);
+            return;
+        }
+
+        //picks random resource from the available
+        let stolen_resource = *available_resources.choose(&mut self.rng).unwrap();
+
+        //checks the targeted players Resource HashMap
+        if let Some(amount) = robbed_player.resources.get_mut(&stolen_resource) {
+            if *amount > 0 {
+                    *amount -= 1; //takes 1 resource from the targeted player
+                 
+                let entry = self.players[self.current_player].resources.entry(stolen_resource).or_insert(0);
+                *entry += 1; //gives 1 resource to the turn player
+            }
+        }
+    }
+
+    //CHECK FOR MAX SETTLEMENT AMOUNT IF  <= 19 HEX
+    
+    
+    pub fn build_settlement(&mut self, player_id: usize, vertex: usize) -> Result<(), &'static str> {
+        
+        //checks if vertex is free
+        if self.players.iter().any(|p| p.settlements.contains(&vertex) || p.cities.contains(&vertex)) {
+            return Err("Vertex is already occupied");
+        }
+
+        //distance rule
+        for neighbor in &self.vertices[vertex].neighbors {
+        if self.players.iter().any(|p| p.settlements.contains(neighbor) || p.cities.contains(neighbor)) {
+            return Err("Too close to another settlement or city");
+        }
+    }
+
+        let player = &mut self.players[player_id];
+
+        //has to be conneceted to a road
+        let is_connected = player.roads.iter().any(|&(x, y)| x == vertex || y == vertex);
+        if !is_connected {
+            return Err("Settlement must be connected to your road");
+        }
+
+        //needed resources
+        let needed = [Resource::Brick, Resource::Lumber, Resource::Wool, Resource::Grain];
+        //checks resources
+        for &r in &needed {
+            if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+        }
+        //removes resources
+        for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+        //adds settlement
+        player.settlements.insert(vertex);
+        //adds 1 victory point
+        player.victory_points += 1;
+        Ok(())
+    }
+
+    pub fn build_city(&mut self, player_id: usize, vertex: usize) -> Result<(), &'static str> {
+        //checks if its already occupied by another player
+        if self.players.iter().any(|p| (p.id != player_id) && (p.settlements.contains(&vertex) || p.cities.contains(&vertex))) {
+            return Err("This vertex is already occupied by another player");
+        }
+
+        let player = &mut self.players[player_id];
+
+        //check if there is a settlement
+        if !player.settlements.contains(&vertex) {
+            return Err("No settlement to upgrade on this vertex");}
+        
+        //cant upgrade a city
+        if player.cities.contains(&vertex) {
+            return Err("City already exists on this vertex");
+        }
+        
+        //needed resources
+        let needed = [(Resource::Grain,2),(Resource::Ore,3)];
+        //checks resources
+        for &(r,c) in &needed {
+            if player.resources.get(&r).unwrap_or(&0) < &c { return Err("Not enough resources"); }
+        }
+        //removes resources
+        for &(r,c) in &needed { *player.resources.get_mut(&r).unwrap() -= c; }
+
+        //removes settlement
+        player.settlements.remove(&vertex);
+        //adds city
+        player.cities.insert(vertex);
+        //adds 1 victory point
+        player.victory_points += 1;
+        Ok(())
+    }
+
+    //makes it so road (0,1) and (1,0) are the same
+    fn normalize_road(a: usize, b: usize) -> (usize, usize) {
+    if a < b {
+        (a, b)
+    } else {
+        (b, a)
+    }
+}
+
+    pub fn build_road(&mut self, player_id: usize, a: usize, b: usize) -> Result<(), &'static str> {
+        let player = &mut self.players[player_id];      
+        //vertices must be neighbors
+        if !self.vertices[a].neighbors.contains(&b) {
+            return Err("Vertices not adjacent");
+        }
+
+        //road has to be connected to a settlment, city or road
+        let is_connected = 
+            player.settlements.contains(&a) || player.cities.contains(&a) || 
+            player.roads.iter().any(|&(x, y)| x == a || y == a) ||
+            player.settlements.contains(&b) || player.cities.contains(&b) || 
+            player.roads.iter().any(|&(x, y)| x == b || y == b);
+        if !is_connected {
+        return Err("Road must be connected to your existing infrastructure (settlement, city, or road)");
+        }
+
+        //normalize road
+        let road = Game::normalize_road(a, b);
+
+        //road already exists
+        for p in &self.players {
+            if p.roads.contains(&road) {
+                return Err("Road already exists");
+            }
+        }
+        let player = &mut self.players[player_id];
+
+        //needed resources
+        let needed = [Resource::Brick, Resource::Lumber];
+        //checks resources
+        for &r in &needed {
+            if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+        }
+        //removes resources
+        for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+        //adds road
+        player.roads.insert(road);
+        Ok(())
+    }
+}
+
+
+//-------------------------
+//----------TESTS----------
+//-------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    //standard game has 19 tiles
+    #[test]
+    fn test_board_tile_count() {
+        let game = Game::new(vec!["Alice", "Bob"]);
+        // Standard Catan has 19 tiles
+        assert_eq!(game.tiles.len(), 19);
+    }
+
+    //each tile has 6 corners
+    #[test]
+    fn test_tile_has_six_vertices() {
+        let game = Game::new(vec!["Alice", "Bob"]);
+        for tile in &game.tiles {
+            assert_eq!(tile.vertices.len(), 6);
+        }
+    }
+
+    //connections between vertices are bidirectional
+    #[test]
+    fn test_vertex_neighbors_bidirectional() {
+        let game = Game::new(vec!["Alice", "Bob"]);
+        for vertex in &game.vertices {
+            for &neighbor_idx in &vertex.neighbors {
+                let neighbor = &game.vertices[neighbor_idx];
+                assert!(neighbor.neighbors.contains(&vertex.id),
+                    "Neighbor relationship should be bidirectional");
+            }
+        }
+    }
+
+    //only one desert tile
+    #[test]
+    fn test_single_desert_tile() {
+        let game = Game::new(vec!["Alice", "Bob"]);
+        let desert_tiles: Vec<&Tile> = game.tiles.iter()
+            .filter(|t| t.resource == Resource::Desert)
+            .collect();
+        assert_eq!(desert_tiles.len(), 1, "There should be exactly one desert tile");
+    }
+
+    //number tokens are valid
+    #[test]
+    fn test_number_tokens_valid() {
+        let game = Game::new(vec!["Alice", "Bob"]);
+        for tile in &game.tiles {
+            if tile.resource != Resource::Desert {
+                assert!(tile.number_token.is_some(), "Non-desert tiles should have number tokens");
+                let token = tile.number_token.unwrap();
+                assert!((2..=12).contains(&token) && token != 7,
+                    "Number token should be between 2 and 12, excluding 7");
+            } else {
+                assert!(tile.number_token.is_none(), "Desert tile should have no number token");
+            }
+        }
+    }
+
+    //7 tiles
+    #[test]
+    fn test_small_board() {
+        let mut rng = rand::rng();
+        let hex_coords = vec![
+            (0, 0),
+            (1, 0), (2, 0),
+            (0, 1), (1, 1), (2, 1),
+            (1, 2),
+        ];
+        
+        let (_vertices, tiles) = Game::generate_board_custom(&mut rng, hex_coords);
+        assert_eq!(tiles.len(), 7);
+        for tile in &tiles {
+            assert_eq!(tile.vertices.len(), 6);
+        }
+    }
+
+    //9 tiles
+    #[test]
+    fn test_rectangular_board() {
+        let mut rng = rand::rng();
+        let hex_coords = vec![
+            (0,0),(1,0),(2,0),
+            (0,1),(1,1),(2,1),
+            (0,2),(1,2),(2,2),
+        ];
+        let (_vertices, tiles) = Game::generate_board_custom(&mut rng, hex_coords);
+        assert_eq!(tiles.len(), 9);
+        for tile in &tiles {
+            assert_eq!(tile.vertices.len(), 6);
+        }
+    }
+
+    #[cfg(test)]
+
+
+
+    #[test]
+    fn test_vertex_connections() {
+        let mut rng = rand::rng();
+
+        let hex_coords = vec![
+            (7,-1),
+            (0,0), (1,0), (7,0), (8,0),
+            (-1,1), (0,1)
+        ];
+
+        let (vertices, tiles) = Game::generate_board_from_coords(&mut rng, hex_coords);
+
+        //each tile should have 6 vertices
+        for tile in &tiles {
+            assert_eq!(tile.vertices.len(), 6);
+        }
+
+        //each vertex should have at least 2 neighbors
+        for vertex in &vertices {
+            assert!(vertex.neighbors.len() >= 2, 
+                "Vertex {} has too few neighbors: {:?}", vertex.id, vertex.neighbors);
+        }
+
+        //print the total amount of vertices
+        println!("Total vertices: {}", vertices.len());
+        
+        //for each vertex print its neighbors
+        for vertex in &vertices {
+            let mut neighbor_indices = vec![];
+                for neighbor in &vertex.neighbors {
+                neighbor_indices.push(*neighbor);
+            }
+            println!(
+                "Vertex {} (neighbors: {:?})",
+                vertex.id,
+                neighbor_indices
+            );
+        }
+
+        //standard 19 tile Catan coordinates
+        let hex_coords = vec![
+            (0,0),(1,0),(2,0),
+            (-1,1),(0,1),(1,1),(2,1),
+            (-2,2),(-1,2),(0,2),(1,2),(2,2),
+            (-2,3),(-1,3),(0,3),(1,3),
+            (-2,4),(-1,4),(0,4),
+        ];
+
+        let (vertices, tiles) = Game::generate_board_from_coords(&mut rng, hex_coords);
+
+        //each tile should have 6 vertices
+        for tile in &tiles {
+            assert_eq!(tile.vertices.len(), 6);
+        }
+
+        //each vertex should have at least 2 neighbors
+        for vertex in &vertices {
+            assert!(vertex.neighbors.len() >= 2, 
+                "Vertex {} has too few neighbors: {:?}", vertex.id, vertex.neighbors);
+        }
+
+        //print the total amount of vertices
+        println!("Total vertices: {}", vertices.len());
+        
+        //for each vertex print its neighbors
+        for vertex in &vertices {
+            let mut neighbor_indices = vec![];
+            // Iterate over each connection of the current vertex
+            for neighbor in &vertex.neighbors {
+                neighbor_indices.push(*neighbor);
+            }
+            println!(
+                "Vertex {} (neighbors: {:?})",
+                vertex.id,
+                neighbor_indices
+            );
+        }
+    }
+}
