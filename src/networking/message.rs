@@ -4,10 +4,12 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum GameMessage {
-    Turn { player: u8},
-    Join { player: u8},
-    Disconnect { player: u8},
-    Confirmation { player: u8}
+    Turn { player: u8 },
+    TurnOver { player: u8 },
+    Join { player: u8 },
+    Disconnect { player: u8 },
+    Confirmation { player: u8 },
+    Something { player: u8 }
     // join, current turn, invalid turn, move?, 
 }
 
@@ -21,8 +23,10 @@ impl fmt::Display for GameMessage {
         match self {
             GameMessage::Confirmation { player } => write!(f, "Hello player {}!", player),
             GameMessage::Turn { player } => write!(f, "It's player {}'s turn", player),
+            GameMessage::TurnOver { player } => write!(f, "It's player {}'s turn", (player % 4 + 1)),
             GameMessage::Join { player } => write!(f, "Player {} has joined", player),
             GameMessage::Disconnect { player } => write!(f, "Player {} has disconnected.", player),
+            GameMessage::Something { player } => write!(f, "Player {} did something.", player),
         }
     }
 }

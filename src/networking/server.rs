@@ -1,69 +1,103 @@
-pub mod message;
-
 use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex};
 use std::collections::HashMap;
-use std::thread;
 use std::sync::Arc;
+use serde_json;
 
-use message::{GameMessage};
+pub mod message;
+pub mod game_server;
 
-struct GameServer {
-    players: Vec<Option<u8>>,
-    current_turn: u8,
-}
+use message::GameMessage;
+use game_server::GameServer;
 
-impl GameServer {
-    fn new() -> Self {
-        GameServer {
-            players: vec![None; 4],
-            current_turn: 1,
+
+pub async fn run_server(
+    server: Arc<Mutex<GameServer>>,
+    stream: Arc<Mutex<TcpStream>>,
+    player: u8,
+    clients: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>
+) -> tokio::io::Result<()> {
+
+    let mut buf = [0; 1024];
+
+    {
+        let mut stream_lock = stream.lock().await;
+        let welcome_msg = format!("Welcome, Player {}", player);
+        if let Err(e) = stream_lock.write_all(welcome_msg.as_bytes()).await {
+            eprintln!("Failed to send welcome message to player {}: {}", player, e);
+            return Err(e);
         }
     }
 
-    async fn handle_client(&mut self, mut socket: TcpStream, player: u8) -> tokio::io::Result<()> {
-        let mut buf = [0; 1024];
+    /*let join_msg = GameMessage::Join { player };
+    let msg = serde_json::to_string(&join_msg).unwrap();
+    broadcast_msg(&clients, &msg).await;
 
-        let start_msg = GameMessage::Turn { player };
-        let msg = serde_json::to_string(&start_msg).unwrap();
-        socket.write_all(msg.as_bytes()).await?;
+    let server_lock = server.lock().await;
+    let turn_msg = GameMessage::Turn { player: server_lock.current_player };
+    let msg = serde_json::to_string(&turn_msg).unwrap();
+    broadcast_msg(&clients, &msg).await;
 
-        loop {
-            let n = socket.read(&mut buf).await?;
-            if n == 0 {
+    drop(server_lock);*/
+
+    loop {
+        let mut stream_lock = stream.lock().await;
+        let n = match stream_lock.read(&mut buf).await {
+            Ok(n) if n == 0 => break,
+            Ok(n) => n,
+            Err(e) => {
+                eprintln!("Failed to read from player {}: {}", player, e);
                 break;
             }
+        };
 
-            let msg: GameMessage = match serde_json::from_slice(&buf[..n]) {
-                Ok(msg) => msg,
-                Err(e) => {
-                    eprintln!("Failed to parse message: {}", e);
-                    continue;
-                }
-            };
-            
-            match msg {
-                GameMessage::Turn { player: _u8 } => {
-                    if self.current_turn == player {
-                        println!("It's your turn");
-                    } else {
-                        println!("It's player {}'s turn", player);
+        /*let msg: GameMessage = match serde_json::from_slice(&buf[..n]) {
+            Ok(msg) => msg,
+            Err(e) => {
+                eprintln!("Failed to parse message: {}", e);
+                continue;
+            }
+        }; */
+        
+        match serde_json::from_slice::<GameMessage>(&buf[..n]) {
+            Ok(msg) => {
+                match msg {
+                    GameMessage::TurnOver { player } => {
+                        let mut server_lock = server.lock().await;
+                        if server_lock.current_player == player {
+                            server_lock.next_turn();
+                            let turn_msg = GameMessage::Turn { player: server_lock.current_player };
+                            let msg = match serde_json::to_string(&turn_msg) {
+                                Ok(msg) => msg,
+                                Err(e) => {
+                                    eprintln!("Failed to serialize turn message: {}", e);
+                                    continue;
+                                }
+                            };
+                            if let Err(e) = broadcast_msg(&clients, &msg).await {
+                                eprint!("Failed to broadcast turn message: {}", e);
+                            }
+                        }
                     }
+                    GameMessage::Disconnect { player } => {
+                        // todo...
+                    }
+                    _ => {}
                 }
-                GameMessage::Join { player: _u8} => {
-                    println!("Player {} joined", player);
-                }
-                GameMessage::Disconnect { player: _u8 } => {
-                    println!("Player {} disconnected", player);
-                }
-                _ => {}
+            }
+            Err(e) => {
+                eprint!("Failed to parse message from player {}: {}", player, e);
+                continue;
             }
         }
-        Ok(())
     }
+    Ok(())
 }
 
+/// Starts the server locally (127.0.0.1:8080)
+/// To try: cargo run --bin server
+/// Run "cargo run --bin client" in new terminal to test if client is connecting correctly
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:8080").await?;
@@ -72,46 +106,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let server = Arc::new(Mutex::new(GameServer::new()));
     let clients: Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>> = Arc::new(Mutex::new(HashMap::new()));
 
-    println!("Hello Player 1! Lobby initiated");
+    println!("Lobby created; connection outgoing");
 
     loop {
         let (stream, _) = listener.accept().await?;
+        print!("New connection established");
         let server = Arc::clone(&server);
         let clients = Arc::clone(&clients);
 
         tokio::spawn(async move {
             let stream = Arc::new(Mutex::new(stream));
-            let mut buf = [0; 1024];
-            let server = server.lock().await;
 
-            let player = server.players.iter().position(|p| p.is_none()).unwrap_or(0) as u8 + 1;
-            let player_name = String::from(("Player ").to_owned()) + &player.to_string();
+            let player = {
+                let mut server_lock = server.lock().await;
+                let player = match server_lock.players.iter().position(|p| p.is_none()) {
+                    Some(slot) => {
+                        let player = slot as u8 + 1;
+                        println!("Hello player {}", player);
+                        player
+                    },
+                    None => {
+                        eprintln!("No available player slots");
+                        return;
+                    }
+                };
 
-            {
-                let mut stream_lock = stream.lock().await;
-                {
+                let player_name = format!("Player {}", player);
+                server_lock.players[(player - 1) as usize] = Some(player);
+
+                { 
                     let mut clients_lock = clients.lock().await;
                     clients_lock.insert(player_name.clone(), Arc::clone(&stream));
                 }
-            
-                broadcast_msg(&clients, &format!("{} joined", player_name)).await;
 
-                loop {
-                    let n = stream_lock.read(&mut buf).await.unwrap();
-                    if n == 0  {
-                        break;
-                    }
-                    broadcast_msg(&clients, &format!("{} disconnected", player_name)).await;
-                }
+                player
+            };
+
+            if let Err(e) = run_server(Arc::clone(&server), Arc::clone(&stream), player, Arc::clone(&clients)).await {
+                eprintln!("Error handling player {}: {}", player, e);
             }
+
+            let mut server_lock = server.lock().await;
+            server_lock.players[(player - 1) as usize] = None;
         });
     }
 }
 
-async fn broadcast_msg(clients: &Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>, msg: &str) {
+async fn broadcast_msg(clients: &Arc<Mutex<HashMap<String, Arc<Mutex<TcpStream>>>>>, msg: &str) -> tokio::io::Result<()> {
     let clients_lock = clients.lock().await;
-    for (_, client) in clients_lock.iter() {
+    let mut disconnected_clients = Vec::new();
+
+    for (name, client) in clients_lock.iter() {
         let mut client_lock = client.lock().await;
-        let _ = client_lock.write_all(msg.as_bytes()).await;
+        if let Err(e) = client_lock.write_all(msg.as_bytes()).await {
+            eprintln!("Failed to send message to clients {}: {}", name, e);
+            disconnected_clients.push(name.clone());
+        }
     }
+
+    if !disconnected_clients.is_empty() {
+        let mut clients_lock = clients.lock().await;
+        for name in disconnected_clients {
+            clients_lock.remove(&name);
+        }
+    }
+
+    Ok(())
 }
