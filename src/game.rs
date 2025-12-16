@@ -115,6 +115,9 @@ pub struct Game {
     pub turn_phase: TurnPhase,
     pub game_phase: GamePhase,
     pub setup_placement: u8, //how many placements current player made (0-2)
+    pub largest_army_owner: Option<usize>,
+    pub longest_road_owner: Option<usize>,
+    pub longest_road_length: usize,
     rng: rand::rngs::ThreadRng, //local random number generator
 }
 
@@ -165,6 +168,9 @@ impl Game {
             turn_phase: TurnPhase::RollResources,
             game_phase: GamePhase::SetupRound1,
             setup_placement: 0,
+            largest_army_owner: None,
+            longest_road_owner: None,
+            longest_road_length: 0,
             rng,
         }
     }
@@ -424,6 +430,43 @@ impl Game {
         }
     }  
 
+    fn update_largest_army(&mut self, player_id: usize) {
+        let player_knights = self.players[player_id].knights_played;
+
+        if player_knights <3 {
+            return;
+        }
+
+        match self.largest_army_owner {
+
+            //no one owns it yet
+            None => {
+                self.largest_army_owner = Some(player_id);
+                self.players[player_id].victory_points += 2;
+                println!("Player {} gains Largest Army!", player_id);
+            }
+
+            Some(current_owner) => {
+                if current_owner == player_id {
+                    return; //already owns it
+                }
+
+                let current_knights = self.players[current_owner].knights_played;
+
+                if player_knights > current_knights {
+                    //remove from old owner
+                    self.players[current_owner].victory_points -= 2;
+                
+                    //give to new owner
+                    self.players[player_id].victory_points += 2;
+                    self.largest_army_owner = Some(player_id);
+
+                    println!("Player {} takes Largest Army from Player {}!", player_id, current_owner);
+                }
+            }
+        }
+    }
+
     //second part of a robber turn, moves the robber and allows to steal one resource (this is also the knight dev card)
     fn handle_knight(&mut self) {
         //checks for available tiles for the robber
@@ -453,11 +496,12 @@ impl Game {
         let robber_tile = &self.tiles[self.robber_tile];
 
         //gathers player IDs from players that can be robbed
-        let robbable_players: Vec<usize> = robber_tile.vertices.iter()
+        let robbable_players: HashSet<usize> = robber_tile.vertices.iter()
             .filter_map(|&vertex_idx| {
-                self.players.iter().find(|p| p.settlements.contains(&vertex_idx) || p.cities.contains(&vertex_idx))
+                self.players.iter()
+                    .find(|p| p.id != self.current_player && (p.settlements.contains(&vertex_idx) || p.cities.contains(&vertex_idx)))
+                    .map(|p| p.id)
             })
-            .map(|p| p.id)
             .collect();
 
         if robbable_players.is_empty() {
@@ -475,7 +519,7 @@ impl Game {
 
         //placeholder untill implemented IO
         //choses the first available player for simplicity
-        let victim_id = robbable_players[0];
+        let victim_id = *robbable_players.iter().next().unwrap();
 
         let robbed_player = &mut self.players[victim_id];
 
@@ -622,6 +666,80 @@ impl Game {
         Ok(())
     }
 
+    fn longest_road_for_player(&self, player_id: usize) -> usize {
+        let player = &self.players[player_id];
+
+        //adjacency map of player roads
+        let mut adj: HashMap<usize, Vec<usize>> = HashMap::new();
+        for &(a, b) in &player.roads {
+            adj.entry(a).or_default().push(b);
+            adj.entry(b).or_default().push(a);
+        }
+
+        //recursive depth first search to find longerts path from vertex
+        fn dfs(current: usize, adj: &HashMap<usize, Vec<usize>>, visited: &mut HashSet<(usize, usize)>) -> usize {
+            let mut max_len = 0;
+            //if currrent vertex has neighbors
+            if let Some(neighbors) = adj.get(&current) {
+                for &n in neighbors {
+                    //normalizes the edge
+                    let edge = if current < n {(current, n)} else {(n, current)};
+                    //skips edge if already visited in the current path
+                    if !visited.contains(&edge) {
+                        //marks the road as visited
+                        visited.insert(edge);
+                        //recursivelly explore the nieghbor + 1
+                        max_len = max_len.max(1 + dfs(n, adj, visited));
+                        //remove the edhe so other paths can use it
+                        visited.remove(&edge);
+                    }
+                }
+            }
+            max_len
+        }
+
+        //try starting from each vertex
+        let mut overall_max = 0;
+        for &v in adj.keys() {
+            let mut visited = HashSet::new();
+            overall_max = overall_max.max(dfs(v, &adj, &mut visited));
+        }
+
+        overall_max
+    }
+
+    fn update_longest_road(&mut self, player_id: usize) {
+        let road_length = self.longest_road_for_player(player_id);
+
+        if road_length < 5 {
+            return;
+        }
+
+        match self.longest_road_owner {
+            None => {
+                self.longest_road_owner = Some(player_id);
+                self.players[player_id].victory_points += 2;
+                self.longest_road_length = road_length;
+                println!("Player {} gains Longest Road!", player_id);
+            }
+
+            Some(owner) => {
+                if owner != player_id && road_length > self.longest_road_length {
+                    self.players[owner].victory_points -= 2;
+                    self.players[player_id].victory_points += 2;
+                    self.longest_road_owner = Some(player_id);
+                    self.longest_road_length = road_length;
+                    println!("Player {} takes Longest Road from Player {}!", player_id, owner);
+                } else {
+                    //update length if same owner improves
+                    if owner == player_id {
+                        self.longest_road_length = road_length;
+                    }
+                }
+            }
+        }
+    }
+
     //makes it so road (0,1) and (1,0) are the same
     fn normalize_road(a: usize, b: usize) -> (usize, usize) {
         if a < b {
@@ -700,6 +818,8 @@ impl Game {
         //adds road
         player.roads.insert(road);
 
+        self.update_longest_road(player_id);
+
         //in setup phase
         if is_setup {
             self.setup_placement += 1;
@@ -777,16 +897,27 @@ impl Game {
     //You can do this in any Turn Phase
     pub fn play_dev_card(&mut self, player_id: usize, card_id: usize) -> Result<(), &'static str> {
         let player = &mut self.players[player_id];
-        let chosen_card = player.dev_cards.remove(card_id);
 
-        if chosen_card.age < 1 {
+        //not allowed during setup phase
+        if self.game_phase != GamePhase::NormalPlay {
+            return Err("Cannot play dev cards during setup");
+        }
+
+        if card_id >= player.dev_cards.len() {
+            return Err("Invalid dev card index");
+        }
+        
+        if player.dev_cards[card_id].age < 1 {
             return Err("Cannot use this card yet");
         }
         
+        let chosen_card = player.dev_cards.remove(card_id);
+
         match chosen_card.card {
             DevCard::Knight => {
                 player.knights_played += 1;
                 self.handle_knight();
+                self.update_largest_army(player_id);
             }
 
             DevCard::VictoryPoint => {
