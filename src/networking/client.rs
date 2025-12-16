@@ -1,157 +1,174 @@
 use tokio::net::TcpStream;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
+use std::process;
 use std::sync::Arc;
 
 pub mod message;
-
-use message::{GameMessage};
+use message::GameMessage;
 
 
 /// Handles the client connection attempt to the given server
 /// Server here is localhost: 127.0.0.1:8080
-async fn run_client(player: u8) -> tokio::io::Result<()> {
+/// 
+/// Sends an outbound request to the server (currently only local connections possible)
+/// If client connection to server is achieved: handles messaging and inputs from client to server
+async fn run_client() -> tokio::io::Result<()> {
     let stream = TcpStream::connect("127.0.0.1:8080").await?;
-    let stream = Arc::new(Mutex::new(stream));
+    let (reader, mut writer) = stream.into_split();
+    let mut reader = BufReader::new(reader);
 
-    let join_msg = GameMessage::Join { player };
-    let msg = serde_json::to_string(&join_msg).unwrap(); //input given name + (player n) - identifier, unique id, auto generated string key, etc.
-    
-    {
-        let mut stream_lock = stream.lock().await;
-        stream_lock.write_all(msg.as_bytes()).await?;
-    }
+    let mut lines = reader.lines();
+    let confirmation_line = lines.next_line().await?.unwrap();
+    let confirmation_msg: GameMessage = serde_json::from_str(&confirmation_line)?;
 
-    let stream_clone = Arc::clone(&stream);
+    let mut assigned_player: Option<u8> = None;
+
+    match confirmation_msg {
+        GameMessage::Confirmation { player } => {
+            println!("You are Player {}", player);
+            assigned_player = Some(player);
+        }
+        _ => return Ok(()),
+    };
+
+    let is_my_turn = Arc::new(Mutex::new(false));
+    let game_started = Arc::new(Mutex::new(false));
+
+    let is_my_turn_c = Arc::clone(&is_my_turn);
+    let game_started_c = Arc::clone(&game_started);
 
     tokio::spawn(async move {
-        let mut buf = [0; 1024];
-
-        loop {
-            let mut stream_lock = stream_clone.lock().await;
-            let n = match stream_lock.read(&mut buf).await {
-                Ok(n) if n == 0 => break,
-                Ok(n) => n,
-                Err(e) => {
-                    eprintln!("Error reading from server: {}", e);
-                    break;
-                }
-            };
-
-            if let Ok(msg) = serde_json::from_slice::<GameMessage>(&buf[..n]) {
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Ok(msg) = serde_json::from_str::<GameMessage>(&line) {
                 match msg {
-                    GameMessage::Join { player: _u8} => {
-                        println!("Player {} joined", player);
+                    GameMessage::GameStart => {
+                        println!("Game started!");
+                        *game_started_c.lock().await = true;
                     }
-                    GameMessage::Turn { player: _u8 } => {
-                    println!("It's player {}'s turn", player);
+                    GameMessage::Confirmation { player } => {
+                        assigned_player = Some(player);
+                        println!("You are Player {}", player);
+                    },
+                    GameMessage::Join { player } => {
+                        println!("Player {} joined", player)
+                    },
+                    GameMessage::GameEnd => {
+                        println!("Game ended!");
+                        *game_started_c.lock().await = false;
                     }
-                    GameMessage::TurnOver { player: _u8 } => {
-                    println!("Player {} finished their turn", player);
+                    GameMessage::Turn { player } => {
+                        if let Some(assigned_player_value) = assigned_player {
+                            if player == assigned_player_value {
+                                println!("It's your turn");
+                                *is_my_turn_c.lock().await = true;
+                            } else {
+                                println!("It's Player {}'s turn", player);
+                                *is_my_turn_c.lock().await = false;
+                            }
+                        }
+                    },
+                    GameMessage::TurnOver { player } => {
+                        println!("Player {} finished their turn", player)
+                    },
+                    GameMessage::Something { player } => {
+                        println!("Player {} did something", player)
+                    },
+                    GameMessage::Disconnect { player } => {
+                        println!("Player {} disconnected", player)
+                    },
+                    GameMessage::ServerCrash => {
+                        eprintln!("Connection to server lost. Disconnecting...");
+                        process::exit(0);
+                        //eprintln!("If you haven't been disconnected yet, press: Ctrl + C to do so immeadietly");
                     }
-                    GameMessage::Disconnect { player: _u8 } => {
-                        println!("Player {} disconnected", player);
-                    }
-                    GameMessage::Confirmation { player: _u8 } => {
-                        println!("Welcome, player {}", player);
-                    }
-                    GameMessage::Something { player: _u8 } => {
-                        println!("Player {} did something", player);
-                    }
-                    _ => {
-                        println!("Invalid");
-                    }
+                    _ => {}
                 }
-            } else {
-                let msg = String::from_utf8_lossy(&buf[..n]);
-                println!("{}", msg);
             }
         }
     });
 
-    // to test messaging between server, clients (temp valid inputs)
     loop {
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
         let input = input.trim();
 
-        let msg = match input {
-            "finished" => {
-                let turn_over_msg = GameMessage::TurnOver { player };
-                serde_json::to_string(&turn_over_msg).unwrap()
-            },
-            "do something" => {
-                let something_msg = GameMessage::Something { player };
-                serde_json::to_string(&something_msg).unwrap()
-            },
-            "disconnect" => {
-                let dc_msg = GameMessage::Disconnect { player };
-                let msg = serde_json::to_string(&dc_msg).unwrap();
-                let mut stream_lock = stream.lock().await;
-                stream_lock.write_all(msg.as_bytes()).await?;
-                break;
-            },
-            _ => {
-                println!("Invalid input");
+        if let Some(assigned_player_value) = assigned_player {
+            let is_my_turn_lock = is_my_turn.lock().await;
+            let game_started_lock = game_started.lock().await;
+        
+            match input {
+                "disconnect" => {
+                    if let Err(e) = write_msg(&mut writer, &GameMessage::Disconnect { player: assigned_player_value }).await {
+                        eprintln!("Failed to send 'disconnect' message: {}", e);
+                    }
+                    break;
+                }
+                "help" => {
+                    println!("Available commands: ");
+                    println!("If it's your turn: 'do something' or 'finished'");
+                    println!("Otherwise: 'disconnect'");
+                    continue;
+                }
+                "status" => {
+                    println!("Game hasn't started yet. Wait for the host to start the game.");
+                    continue;
+                }
+                _ => {}
+            }
+
+            if *game_started_lock {
+                match input {
+                    "status" => {
+                        println!("Game has started. You're player {}", assigned_player_value);
+                    }
+                    _ => {}
+                }       
+            } else {
+                println!("Game has not started yet. Wait for the game to start.");
                 continue;
             }
-        };
 
-        let mut stream_lock = stream.lock().await;
-        stream_lock.write_all(msg.as_bytes()).await?;
+            if *is_my_turn_lock {
+                match input {
+                    "finished" => {
+                        if let Err(e) = write_msg(&mut writer, &GameMessage::TurnOver { player: assigned_player_value }).await {
+                            eprintln!("Failed to send 'turn over' message: {}", e);
+                        }
+                        continue;
+                    }
+                    "do something" => {
+                        if let Err(e) = write_msg(&mut writer, &GameMessage::Something { player: assigned_player_value }).await {
+                            eprintln!("Failed to send 'do something' message: {}", e);
+                        }
+                        continue;
+                    }
+                    _ => println!("Invalid command; try 'help'")
+                }       
+            } else {
+                println!("It's not your turn.");
+                continue;
+            }
+        }
     }
 
     Ok(())
 }
 
-/// Handles the client connection attemps and tracking of connection errors
-/// Basically used to implement run_client and other fn's correctly
+async fn write_msg<W>(writer: &mut W, msg: &GameMessage) -> tokio::io::Result<()>
+where
+    W: tokio::io::AsyncWriteExt + Unpin,
+{
+    let msg_json = serde_json::to_string(msg)?;
+    writer.write_all(msg_json.as_bytes()).await?;
+    writer.write_all(b"\n").await?;
+    writer.flush().await?;
+    Ok(())
+}
 /// To try: cargo run --bin client (only if server is running in another terminal)
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-/*
-    let player1 = tokio::spawn(async {
-        if let Err(e) = run_client(1).await {
-            eprintln!("Client 1 error: {}", e);
-        }
-    });
-
-    let player2 = tokio::spawn(async {
-        if let Err(e) = run_client(2).await {
-            eprintln!("Client 2 error: {}", e);
-        }
-    });
-
-    let player3 = tokio::spawn(async {
-        if let Err(e) = run_client(3).await {
-            eprintln!("Client 3 error: {}", e);
-        }
-    });
-
-    let player4 = tokio::spawn(async {
-        if let Err(e) = run_client(4).await {
-            eprintln!("Client 4 error: {}", e);
-        }
-    });
-
-    tokio::try_join!(player1, player2, player3, player4)?;
-
-    println!("All clients finished");*/
-
-    let player_handles: Vec<_> = (1..=4).map(|player: u8| {
-        tokio::spawn(async move {
-            if let Err(e) = run_client(player).await {
-                eprintln!("Client {} error: {}", player, e);
-            }
-        })
-    }).collect();
-
-    for handle in player_handles {
-        if let Err(e) = handle.await {
-            eprintln!("Client task failed: {}", e);
-        }
-    }
-    
-    println!("All clients finished");
+    run_client().await?;
     Ok(())
 }
