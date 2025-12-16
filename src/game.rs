@@ -38,6 +38,13 @@ pub enum DevCard {
     YearOfPlenty,
 }
 
+//dev card struct (to give them an age)
+#[derive(Clone, Debug, Copy)]
+pub struct DevCardInstance {
+    pub card: DevCard,
+    pub age: usize,
+}
+
 //vertices at hex corners
 #[derive(Debug)]
 pub struct Vertex {
@@ -76,7 +83,7 @@ pub struct Player {
     pub last_setup_settlement: Option<usize>,
     pub cities: HashSet<usize>,
     pub roads: HashSet<(usize, usize)>,
-    pub dev_cards: Vec<DevCard>,
+    pub dev_cards: Vec<DevCardInstance>,
     pub knights_played: u8,
     pub victory_points: u8,
 }
@@ -104,6 +111,7 @@ pub struct Game {
     pub tiles: Vec<Tile>,
     pub robber_tile: usize,
     pub current_player: usize,
+    pub dev_card_pool: Vec<DevCard>,
     pub turn_phase: TurnPhase,
     pub game_phase: GamePhase,
     pub setup_placement: u8, //how many placements current player made (0-2)
@@ -137,12 +145,23 @@ impl Game {
             .position(|t| t.resource == Resource::Desert)
             .expect("There must be a desert tile");
 
+        // Dev card pool: 14 knights, 5 victory points, 2 of all others
+        let mut dev_card_pool = vec![
+            DevCard::Knight, DevCard::Knight, DevCard::Knight, DevCard::Knight, DevCard::Knight, 
+            DevCard::Knight, DevCard::Knight, DevCard::Knight, DevCard::Knight, DevCard::Knight, 
+            DevCard::Knight, DevCard::Knight, DevCard::Knight, DevCard::Knight, DevCard::VictoryPoint, 
+            DevCard::VictoryPoint, DevCard::VictoryPoint, DevCard::VictoryPoint, DevCard::VictoryPoint, DevCard::Monopoly, 
+            DevCard::Monopoly, DevCard::RoadBuilding, DevCard::RoadBuilding, DevCard::YearOfPlenty, DevCard::YearOfPlenty,
+        ];
+        dev_card_pool.shuffle(&mut rng);
+
         Game {
             players,
             vertices,
             tiles,
             robber_tile,
             current_player: 0,
+            dev_card_pool,
             turn_phase: TurnPhase::RollResources,
             game_phase: GamePhase::SetupRound1,
             setup_placement: 0,
@@ -328,6 +347,13 @@ impl Game {
     pub fn next_turn(&mut self) {
         self.current_player = (self.current_player + 1) % self.players.len(); //modulo for looping
         self.start_turn();
+
+        //adjust age for dev cards
+        for player in &mut self.players {
+            for card in &mut player.dev_cards {
+                card.age += 1;
+            }
+        }
     }
 
     //2d6 rolls
@@ -369,8 +395,8 @@ impl Game {
     }
 
 
-    fn handle_robber(&mut self) {
-        
+    //first part of a robber turn, takes away half of a players resources if they have too much stuff
+    fn robbery(&mut self) {
         //checks for each player if they have more than 7 resources
         for player in &mut self.players {
             if player.resources.values().sum::<u8>() > 7 {
@@ -396,7 +422,10 @@ impl Game {
                 }
             }
         }
-        
+    }  
+
+    //second part of a robber turn, moves the robber and allows to steal one resource (this is also the knight dev card)
+    fn handle_knight(&mut self) {
         //checks for available tiles for the robber
         let available_tiles: Vec<usize> = self.tiles.iter()
             .enumerate()
@@ -480,6 +509,11 @@ impl Game {
                 *entry += 1; //gives 1 resource to the turn player
             }
         }
+    }
+
+    fn handle_robber(&mut self) {
+        self.robbery();
+        self.handle_knight();
     }
 
     pub fn build_settlement(&mut self, player_id: usize, vertex: usize) -> Result<(), &'static str> {
@@ -590,12 +624,12 @@ impl Game {
 
     //makes it so road (0,1) and (1,0) are the same
     fn normalize_road(a: usize, b: usize) -> (usize, usize) {
-    if a < b {
-        (a, b)
-    } else {
-        (b, a)
+        if a < b {
+            (a, b)
+        } else {
+            (b, a)
+        }
     }
-}
 
     pub fn build_road(&mut self, player_id: usize, a: usize, b: usize) -> Result<(), &'static str> {
         
@@ -709,6 +743,103 @@ impl Game {
             }
         }
 
+        Ok(())
+    }
+
+
+    pub fn buy_dev_card(&mut self, player_id: usize) -> Result<(), &'static str> {
+        let player = &mut self.players[player_id];
+
+        //handling resources
+        let needed = [Resource::Ore, Resource::Grain, Resource::Wool];
+        for &r in &needed {
+            if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+        }
+        for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+
+        //put dev card in inventory and indicate if its usable or not
+        match self.dev_card_pool.pop() {
+            None => return Err("Dev card pool is depleted"),
+            Some(new_dev_card) => {
+                match new_dev_card {
+                    DevCard::VictoryPoint => player.dev_cards.push(DevCardInstance {
+                        card: new_dev_card, age: 1,
+                    }),
+                    _ => player.dev_cards.push(DevCardInstance {
+                        card: new_dev_card, age: 0
+                    }),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    //You can do this in any Turn Phase
+    pub fn play_dev_card(&mut self, player_id: usize, card_id: usize) -> Result<(), &'static str> {
+        let player = &mut self.players[player_id];
+        let chosen_card = player.dev_cards.remove(card_id);
+
+        if chosen_card.age < 1 {
+            return Err("Cannot use this card yet");
+        }
+        
+        match chosen_card.card {
+            DevCard::Knight => {
+                player.knights_played += 1;
+                self.handle_knight();
+            }
+
+            DevCard::VictoryPoint => {
+                player.victory_points += 1;
+            }
+
+            DevCard::Monopoly => {
+                //Placeholder: chosen resource defaults to Ore for now, until we have IO
+                let chosen_resource = Resource::Ore;
+
+                let mut acquired = 0;
+
+                //collect all the resources
+                for (idx, victim) in self.players.iter_mut().enumerate() {
+                    if idx == player_id {
+                        continue;
+                    }
+
+                    if let Some(amount) = victim.resources.remove(&chosen_resource) {
+                        acquired += amount;
+                    }
+                }
+
+                //give the resources to the player
+                *self.players[player_id].resources.entry(chosen_resource).or_insert(0) += acquired;
+            }
+
+            DevCard::RoadBuilding => {
+                //give player lumber and brick (to keep the roadbuilding function intact)
+                *self.players[player_id].resources.entry(Resource::Lumber).or_insert(0) += 2;
+                *self.players[player_id].resources.entry(Resource::Brick).or_insert(0) += 2;
+
+                //Placeholder numbers until we have IO
+                let r1a = 1;
+                let r1b = 2;
+                let r2a = 2;
+                let r2b = 3;
+
+                //force player to build roads
+                self.build_road(player_id, r1a, r1b)?;
+                self.build_road(player_id, r2a, r2b)?;
+            }
+
+            DevCard::YearOfPlenty => {
+                //Placeholder: Defaults to Ore and Wool until we have IO
+                let resource1 = Resource::Ore;
+                let resource2 = Resource::Wool;
+
+                *self.players[player_id].resources.entry(resource1).or_insert(0) += 1;
+                *self.players[player_id].resources.entry(resource2).or_insert(0) += 1;
+            }
+        }
+        
         Ok(())
     }
 }
