@@ -15,6 +15,13 @@ pub enum Resource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GamePhase {
+    SetupRound1,    //clockwise
+    SetupRound2,    //counter clockwise
+    NormalPlay,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnPhase{
     RollResources,
     Trade,
@@ -66,6 +73,7 @@ pub struct Player {
     pub name: String,
     pub resources: HashMap<Resource, u8>,
     pub settlements: HashSet<usize>,
+    pub last_setup_settlement: Option<usize>,
     pub cities: HashSet<usize>,
     pub roads: HashSet<(usize, usize)>,
     pub dev_cards: Vec<DevCard>,
@@ -80,6 +88,7 @@ impl Player {
             name: name.to_string(),
             resources: HashMap::new(),
             settlements: HashSet::new(),
+            last_setup_settlement: None,
             cities: HashSet::new(),
             roads: HashSet::new(),
             dev_cards: Vec::new(),
@@ -96,6 +105,8 @@ pub struct Game {
     pub robber_tile: usize,
     pub current_player: usize,
     pub turn_phase: TurnPhase,
+    pub game_phase: GamePhase,
+    pub setup_placement: u8, //how many placements current player made (0-2)
     rng: rand::rngs::ThreadRng, //local random number generator
 }
 
@@ -133,6 +144,8 @@ impl Game {
             robber_tile,
             current_player: 0,
             turn_phase: TurnPhase::RollResources,
+            game_phase: GamePhase::SetupRound1,
+            setup_placement: 0,
             rng,
         }
     }
@@ -469,11 +482,14 @@ impl Game {
         }
     }
 
-    //CHECK FOR MAX SETTLEMENT AMOUNT IF  <= 19 HEX
-    
-    
     pub fn build_settlement(&mut self, player_id: usize, vertex: usize) -> Result<(), &'static str> {
         
+        //if setup phase
+        let is_setup = matches!(
+            self.game_phase,
+            GamePhase::SetupRound1 | GamePhase::SetupRound2
+        );
+
         //checks if vertex is free
         if self.players.iter().any(|p| p.settlements.contains(&vertex) || p.cities.contains(&vertex)) {
             return Err("Vertex is already occupied");
@@ -481,31 +497,54 @@ impl Game {
 
         //distance rule
         for neighbor in &self.vertices[vertex].neighbors {
-        if self.players.iter().any(|p| p.settlements.contains(neighbor) || p.cities.contains(neighbor)) {
-            return Err("Too close to another settlement or city");
+            if self.players.iter().any(|p| p.settlements.contains(neighbor) || p.cities.contains(neighbor)) {
+                return Err("Too close to another settlement or city");
+            }
         }
-    }
 
+        let is_standard = self.tiles.len() <= 19;
         let player = &mut self.players[player_id];
 
         //has to be conneceted to a road
-        let is_connected = player.roads.iter().any(|&(x, y)| x == vertex || y == vertex);
-        if !is_connected {
-            return Err("Settlement must be connected to your road");
+        //ignore during setup phase
+        if !is_setup {
+            let is_connected = player.roads.iter().any(|&(x, y)| x == vertex || y == vertex);
+            if !is_connected {
+                return Err("Settlement must be connected to your road");
+            }
         }
 
-        //needed resources
-        let needed = [Resource::Brick, Resource::Lumber, Resource::Wool, Resource::Grain];
-        //checks resources
-        for &r in &needed {
-            if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+        //checks if under max allowed number
+        if is_standard && player.settlements.len() >= 5 {
+            return Err("Maximum number of settlements reached");
         }
-        //removes resources
-        for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+
+        //doesnt allow building 2 settlements in a row during setup
+        if is_setup && self.setup_placement != 0 {
+            return Err("Must build road after settlement")
+        }
+
+        //ignore during setup phase
+        if !is_setup {
+            //needed resources
+            let needed = [Resource::Brick, Resource::Lumber, Resource::Wool, Resource::Grain];
+            //checks resources
+            for &r in &needed {
+                if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+            }
+            //removes resources
+            for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+        }
+
         //adds settlement
         player.settlements.insert(vertex);
         //adds 1 victory point
         player.victory_points += 1;
+
+        //note last settlement during setup
+        if is_setup {
+            player.last_setup_settlement = Some(vertex);
+        }
         Ok(())
     }
 
@@ -514,7 +553,7 @@ impl Game {
         if self.players.iter().any(|p| (p.id != player_id) && (p.settlements.contains(&vertex) || p.cities.contains(&vertex))) {
             return Err("This vertex is already occupied by another player");
         }
-
+        let is_standard = self.tiles.len() <= 19;
         let player = &mut self.players[player_id];
 
         //check if there is a settlement
@@ -524,6 +563,11 @@ impl Game {
         //cant upgrade a city
         if player.cities.contains(&vertex) {
             return Err("City already exists on this vertex");
+        }
+
+        //checks if under max allowed number
+        if is_standard && player.cities.len() >= 4 {
+            return Err("Maximum number of cities reached");
         }
         
         //needed resources
@@ -554,6 +598,13 @@ impl Game {
 }
 
     pub fn build_road(&mut self, player_id: usize, a: usize, b: usize) -> Result<(), &'static str> {
+        
+        //if setup phase
+        let is_setup = matches!(
+            self.game_phase,
+            GamePhase::SetupRound1 | GamePhase::SetupRound2
+        );
+        
         let player = &mut self.players[player_id];      
         //vertices must be neighbors
         if !self.vertices[a].neighbors.contains(&b) {
@@ -579,18 +630,85 @@ impl Game {
                 return Err("Road already exists");
             }
         }
+
+        let is_standard = self.tiles.len() <= 19;
         let player = &mut self.players[player_id];
 
-        //needed resources
-        let needed = [Resource::Brick, Resource::Lumber];
-        //checks resources
-        for &r in &needed {
-            if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+        //checks if under max allowed number
+        if is_standard && player.roads.len() >= 15 {
+            return Err("Maximum number of roads reached");
         }
-        //removes resources
-        for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+
+        //during setup
+        //make player place settlement before road
+        //road has to be connected
+        if is_setup {
+            let settlement = player.last_setup_settlement
+                .ok_or("Must place settlement before road")?;
+
+            if a != settlement && b != settlement {
+                return Err("Road must connect to the placed settlement");
+            }
+        }
+
+        //ignore during setup phase
+        if !is_setup {
+            //needed resources
+            let needed = [Resource::Brick, Resource::Lumber];
+            //checks resources
+            for &r in &needed {
+                if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+            }
+            //removes resources
+            for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+        }
+
         //adds road
         player.roads.insert(road);
+
+        //in setup phase
+        if is_setup {
+            self.setup_placement += 1;
+
+            //if player completed only the first action (built settlement)
+            if self.setup_placement == 1 {
+                //same player continues
+                //needs to place a road
+                return Ok(());
+            }
+
+            //after road is placed
+            //reset the counter for next player
+            self.setup_placement = 0;
+
+            //branches if setup round 1 or 2
+            match self.game_phase {
+                GamePhase::SetupRound1 => {
+                    //next player in players vector
+                    //left to right (clockwise)
+                    self.current_player += 1;
+                    //if went past last player
+                    if self.current_player == self.players.len() {
+                        //return to last player
+                        self.current_player -= 1;
+                        //switch to setup round 2
+                        self.game_phase = GamePhase::SetupRound2;
+                    }
+                }
+                GamePhase::SetupRound2 => {
+                    //if back to first player
+                    if self.current_player == 0 {
+                        //setup is complete => begin game
+                        self.game_phase = GamePhase::NormalPlay;
+                    } else {
+                        //move backwards to previous player
+                        self.current_player -= 1;
+                    }
+                }
+                _ => {} //safety catch
+            }
+        }
+
         Ok(())
     }
 }
@@ -695,8 +813,6 @@ mod tests {
     }
 
     #[cfg(test)]
-
-
 
     #[test]
     fn test_vertex_connections() {
