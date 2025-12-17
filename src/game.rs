@@ -88,6 +88,7 @@ pub struct Harbor {
     pub htype: HarborType,
 }
 
+//2 possible harbor patterns for the 19-tile map of the base game
 const HARBOR_PATTERN_1: &[(usize, usize)] = &[
     (0, 5),
     (6, 7),
@@ -99,7 +100,6 @@ const HARBOR_PATTERN_1: &[(usize, usize)] = &[
     (26, 40),
     (16, 17),
 ];
-
 const HARBOR_PATTERN_2: &[(usize, usize)] = &[
     (10, 11),
     (1, 6),
@@ -178,9 +178,8 @@ impl Game {
             //collects the Players into a vector
             .collect();
 
-        // Generate board
+        // Generate board and harbors
         let (vertices, tiles) = Game::generate_board(&mut rng);
-
         let harbors = Game::generate_harbors(&mut rng);
 
         // Robber starts on desert tile
