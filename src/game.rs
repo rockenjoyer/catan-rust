@@ -81,7 +81,7 @@ pub enum HarborType {
     Resource(Resource), 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Harbor {
     pub loc0: usize, 
     pub loc1: usize,
@@ -638,6 +638,45 @@ impl Game {
         self.robbery();
         self.handle_knight();
     }
+
+
+    pub fn maritime_trade_ratio(&mut self, player_id: usize, resource: Resource) -> u8 {
+        let mut ratio = 4;
+        let player= &mut self.players[player_id];
+
+        for harbor in &self.harbors {
+            let has_access = 
+                player.settlements.contains(&harbor.loc0) 
+                || player.settlements.contains(&harbor.loc1)
+                || player.cities.contains(&harbor.loc0)
+                || player.cities.contains(&harbor.loc1);
+            
+            if !has_access {continue;}
+
+            match harbor.htype {
+                HarborType::Resource(res) if res == resource => {return 2;}
+                HarborType::Generic => {ratio = ratio.min(3);}
+                _ => {}
+            }
+        }
+
+        ratio
+    }
+
+    pub fn maritime_trade(&mut self, player_id: usize, offer: Resource, request: Resource) -> Result<(), &'static str> {
+        let ratio = self.maritime_trade_ratio(player_id, offer);
+        let player = &mut self.players[player_id];
+        
+        if *player.resources.get(&offer).unwrap_or(&0) < ratio {
+            return Err("Not enough resources");
+        }
+
+        *player.resources.get_mut(&offer).unwrap() -= ratio;
+        *player.resources.entry(request).or_insert(0) += 1;
+
+        Ok(())
+    }
+
 
     pub fn build_settlement(&mut self, player_id: usize, vertex: usize) -> Result<(), &'static str> {
         
