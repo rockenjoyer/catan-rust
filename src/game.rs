@@ -74,6 +74,44 @@ pub struct Tile {
     pub vertices: [usize; 6], //6 corners
 }
 
+//harbor can be generic or have a specific resource
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HarborType {
+    Generic,            
+    Resource(Resource), 
+}
+
+#[derive(Debug)]
+pub struct Harbor {
+    pub loc0: usize, 
+    pub loc1: usize,
+    pub htype: HarborType,
+}
+
+const HARBOR_PATTERN_1: &[(usize, usize)] = &[
+    (0, 5),
+    (6, 7),
+    (12, 22),
+    (35, 36),
+    (45, 46),
+    (50, 51),
+    (48, 49),
+    (26, 40),
+    (16, 17),
+];
+
+const HARBOR_PATTERN_2: &[(usize, usize)] = &[
+    (10, 11),
+    (1, 6),
+    (4, 17),
+    (27, 28),
+    (39, 40),
+    (47, 51),
+    (52, 53),
+    (37, 45),
+    (22, 23),
+];
+
 #[derive(Debug)]
 pub struct Player {
     pub id: usize,
@@ -109,6 +147,7 @@ pub struct Game {
     pub players: Vec<Player>,
     pub vertices: Vec<Vertex>,
     pub tiles: Vec<Tile>,
+    pub harbors: Vec<Harbor>,
     pub robber_tile: usize,
     pub current_player: usize,
     pub dev_card_pool: Vec<DevCard>,
@@ -142,6 +181,8 @@ impl Game {
         // Generate board
         let (vertices, tiles) = Game::generate_board(&mut rng);
 
+        let harbors = Game::generate_harbors(&mut rng);
+
         // Robber starts on desert tile
         let robber_tile = tiles
             .iter()
@@ -162,6 +203,7 @@ impl Game {
             players,
             vertices,
             tiles,
+            harbors,
             robber_tile,
             current_player: 0,
             dev_card_pool,
@@ -308,6 +350,44 @@ impl Game {
     ) -> (Vec<Vertex>, Vec<Tile>) {
         
         Self::generate_board_from_coords(rng, hex_coords)
+    }
+
+    pub fn generate_harbors<R: Rng>(rng: &mut R) -> Vec<Harbor> {
+        //choose pattern 1 or 2 at random
+        let pattern = if rng.random_bool(0.5) {
+            HARBOR_PATTERN_1
+        } else {
+            HARBOR_PATTERN_2
+        };
+
+        //make list of all 9 harbors and shuffle
+        let mut harbor_types = vec![
+            HarborType::Generic,
+            HarborType::Generic,
+            HarborType::Generic,
+            HarborType::Generic,
+        ];
+        for res in [
+            Resource::Brick,
+            Resource::Lumber,
+            Resource::Ore,
+            Resource::Grain,
+            Resource::Wool,
+        ] {
+            harbor_types.push(HarborType::Resource(res));
+        }
+        harbor_types.shuffle(rng);
+
+        //generate harbors
+        pattern
+            .iter()
+            .zip(harbor_types.into_iter())
+            .map(|(&(loc0, loc1), htype)| Harbor {
+                loc0,
+                loc1,
+                htype,
+            })
+            .collect()
     }
 
     //check if the current player has 10 victory points
