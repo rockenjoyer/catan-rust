@@ -640,6 +640,7 @@ impl Game {
     }
 
 
+    //determines the trading ratio of each resource dependent on usable harbors
     pub fn maritime_trade_ratio(&mut self, player_id: usize, resource: Resource) -> u8 {
         let mut ratio = 4;
         let player= &mut self.players[player_id];
@@ -663,6 +664,7 @@ impl Game {
         ratio
     }
 
+    //regular non-player trading
     pub fn maritime_trade(&mut self, player_id: usize, offer: Resource, request: Resource) -> Result<(), &'static str> {
         let ratio = self.maritime_trade_ratio(player_id, offer);
         let player = &mut self.players[player_id];
@@ -673,6 +675,39 @@ impl Game {
 
         *player.resources.get_mut(&offer).unwrap() -= ratio;
         *player.resources.entry(request).or_insert(0) += 1;
+
+        Ok(())
+    }
+
+    //player trade (after both players have agreed)
+    pub fn player_trade(
+        &mut self, 
+        vendor_id: usize, 
+        customer_id: usize, 
+        offer: Resource, 
+        amount_offer: u8, 
+        request: Resource, 
+        amount_request: u8
+    ) -> Result<(), &'static str> {
+        let (vendor, customer) = if vendor_id < customer_id {
+            let (left, right) = self.players.split_at_mut(customer_id);
+            (&mut left[vendor_id], &mut right[0])
+        } else if vendor_id > customer_id {
+            let (left, right) = self.players.split_at_mut(vendor_id);
+            (&mut right[0], &mut left[customer_id])
+        } else {
+            return Err("vendor and customer cannot be the same");
+        };
+
+        if *vendor.resources.get(&offer).unwrap_or(&0) < amount_offer 
+        || *customer.resources.get(&request).unwrap_or(&0) < amount_request {
+            return Err("Not enough resources");
+        }
+
+        *vendor.resources.get_mut(&offer).unwrap() -= amount_offer;
+        *vendor.resources.entry(request).or_insert(0) += amount_request;
+        *customer.resources.get_mut(&request).unwrap() -= amount_request;
+        *customer.resources.entry(offer).or_insert(0) += amount_offer;
 
         Ok(())
     }
