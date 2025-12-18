@@ -1,24 +1,22 @@
 use bevy::prelude::*;
 
-//Shared ownership pointer for the data that is thread-unsafe (RNG inside game.rs).
-use std::rc::Rc; 
-use std::cell::RefCell; //Mutability for "Game" while using Rc.
+//shared ownership pointer for the data that is thread-unsafe (RNG inside game.rs)
+use std::cell::RefCell;
+use std::rc::Rc; //mutability for "Game" while using Rc
 
-use catan_rust::frontend::bevy::FrontendPlugin;
 use catan_rust::backend::game::Game;
+use catan_rust::frontend::bevy::FrontendPlugin;
 
 fn main() {
+    //building a bevy app, creating the game state and registering the frontend plugin
 
-    //Building a Bevy App, creating the game state and registering the frontend plugin.
-
+    //example game setup
     let game = Rc::new(RefCell::new(Game::new(vec!["x", "y"])));
-    
+
     App::new()
         .add_plugins(DefaultPlugins)
-
-        //Inserting the game state as a "non-send resource" into bevy so that systems
-        //can borrow it on the main thread (won't work otherwise).
+        //inserting the game state as a "non-send resource" into bevy so that systems can borrow it on the main thread
         .insert_non_send_resource(game.clone())
         .add_plugins(FrontendPlugin)
         .run();
-} 
+}

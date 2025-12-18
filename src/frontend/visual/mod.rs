@@ -1,4 +1,4 @@
-pub mod tile;
+pub mod city;
 pub mod road;
 pub mod settlement;
-pub mod city;
+pub mod tile;

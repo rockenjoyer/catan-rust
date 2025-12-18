@@ -1,7 +1,7 @@
-#![allow(dead_code)]  //remove warnings about unused code
+#![allow(dead_code)] //remove warnings about unused code
 
-use rand::seq::{IndexedRandom, SliceRandom};
 use rand::Rng;
+use rand::seq::{IndexedRandom, SliceRandom};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -16,13 +16,13 @@ pub enum Resource {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GamePhase {
-    SetupRound1,    //clockwise
-    SetupRound2,    //counter clockwise
+    SetupRound1, //clockwise
+    SetupRound2, //counter clockwise
     NormalPlay,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TurnPhase{
+pub enum TurnPhase {
     RollResources,
     Trade,
     Build,
@@ -42,14 +42,16 @@ pub enum DevCard {
 #[derive(Debug)]
 pub struct Vertex {
     pub id: usize,
+    pub pos: (f32, f32), //added pos variable for usage as vertices on the UI board
     pub neighbors: HashSet<usize>, // neighboring vertices
 }
 
 impl Vertex {
     //creates a vertex
-    pub fn new(id: usize) -> Self {
+    pub fn new(id: usize, pos: (f32, f32)) -> Self {
         Vertex {
             id,
+            pos,
             neighbors: HashSet::new(),
         }
     }
@@ -112,7 +114,6 @@ pub struct Game {
 
 impl Game {
     pub fn new(player_names: Vec<&str>) -> Self {
-
         //local random number generator
         let mut rng = rand::rng();
         //checks if the player number is 2-4
@@ -152,28 +153,39 @@ impl Game {
 
     pub fn generate_board_from_coords(
         rng: &mut rand::rngs::ThreadRng,
-        hex_coords: Vec<(i32, i32)>
+        hex_coords: Vec<(i32, i32)>,
     ) -> (Vec<Vertex>, Vec<Tile>) {
-
         let mut vertices: Vec<Vertex> = Vec::new();
         let mut vertex_map: HashMap<(i32, i32), usize> = HashMap::new();
         let mut tiles: Vec<Tile> = Vec::new();
 
         //standard resources for 19 tiles
         let mut resource_pool = vec![
-            Resource::Brick, Resource::Brick, Resource::Brick,
-            Resource::Lumber, Resource::Lumber, Resource::Lumber, Resource::Lumber,
-            Resource::Wool, Resource::Wool, Resource::Wool, Resource::Wool,
-            Resource::Grain, Resource::Grain, Resource::Grain, Resource::Grain,
-            Resource::Ore, Resource::Ore, Resource::Ore,
+            Resource::Brick,
+            Resource::Brick,
+            Resource::Brick,
+            Resource::Lumber,
+            Resource::Lumber,
+            Resource::Lumber,
+            Resource::Lumber,
+            Resource::Wool,
+            Resource::Wool,
+            Resource::Wool,
+            Resource::Wool,
+            Resource::Grain,
+            Resource::Grain,
+            Resource::Grain,
+            Resource::Grain,
+            Resource::Ore,
+            Resource::Ore,
+            Resource::Ore,
             Resource::Desert,
         ];
         //randomizes resources
         resource_pool.shuffle(rng);
 
         //standard tokens
-        let mut number_pool = vec![2,3,3,4,4,5,5,6,6,
-                                            8,8,9,9,10,10,11,11,12];
+        let mut number_pool = vec![2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
         //randomizes tokens
         number_pool.shuffle(rng);
 
@@ -186,12 +198,12 @@ impl Game {
         //hex corner offsets
         //used to calculate corner coodinates later
         const CORNERS: [(f32, f32); 6] = [
-            ( 0.0,     -1.0),
-            ( 0.8660254, -0.5),
-            ( 0.8660254,  0.5),
-            ( 0.0,      1.0),
+            (0.0, -1.0),
+            (0.8660254, -0.5),
+            (0.8660254, 0.5),
+            (0.0, 1.0),
             (-0.8660254, 0.5),
-            (-0.8660254,-0.5),
+            (-0.8660254, -0.5),
         ];
 
         for (i, &(q, r)) in hex_coords.iter().enumerate() {
@@ -200,16 +212,15 @@ impl Game {
             //gives the hex a random token number
             //desert gets None
             //2 if token pool runs out
-            let number_token =
-                if resource == Resource::Desert {
-                    None
-                } else {
-                    Some(number_pool.pop().unwrap_or(2))
-                };
+            let number_token = if resource == Resource::Desert {
+                None
+            } else {
+                Some(number_pool.pop().unwrap_or(2))
+            };
 
             //turns axial coordinates into pixel coordinates
-            let cx = size * (sqrt3 * q as f32 + (sqrt3 / 2.0) * r as f32);  //horizontal position of the hex center
-            let cy = size * ((3.0 / 2.0) * r as f32);   //vertical position of the hex center
+            let cx = size * (sqrt3 * q as f32 + (sqrt3 / 2.0) * r as f32); //horizontal position of the hex center
+            let cy = size * ((3.0 / 2.0) * r as f32); //vertical position of the hex center
 
             let mut tile_vertex_indices = [0usize; 6];
 
@@ -221,10 +232,7 @@ impl Game {
 
                 //converting the pixel locations into keys
                 //* 1000 to consider float point precision errors
-                let key = (
-                    (vx * 1000.0).round() as i32,
-                    (vy * 1000.0).round() as i32,
-                );
+                let key = ((vx * 1000.0).round() as i32, (vy * 1000.0).round() as i32);
 
                 //check if corner exists in vertex map
                 //if yes reuse its index
@@ -233,7 +241,7 @@ impl Game {
                 //if not add it to vertex map
                 } else {
                     let idx = vertices.len();
-                    vertices.push(Vertex::new(idx));
+                    vertices.push(Vertex::new(idx, (vx, vy)));
                     vertex_map.insert(key, idx);
                     idx
                 };
@@ -260,16 +268,29 @@ impl Game {
 
         (vertices, tiles)
     }
-    
+
     pub fn generate_board(rng: &mut rand::rngs::ThreadRng) -> (Vec<Vertex>, Vec<Tile>) {
-        
         //hex coordinates for a normal 19 tile map
         let hex_coords = vec![
-            (0,-2), (1,-2), (2,-2),
-            (-1,-1), (0,-1), (1,-1), (2,-1),
-            (-2,0), (-1,0), (0,0), (1,0), (2,0),
-            (-2,1), (-1,1), (0,1), (1,1),
-            (-2,2), (-1,2), (0,2)
+            (0, -2),
+            (1, -2),
+            (2, -2),
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (2, -1),
+            (-2, 0),
+            (-1, 0),
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (-2, 1),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+            (-2, 2),
+            (-1, 2),
+            (0, 2),
         ];
 
         Self::generate_board_from_coords(rng, hex_coords)
@@ -281,7 +302,6 @@ impl Game {
         //vector of coordinates for custom shaped boards
         hex_coords: Vec<(i32, i32)>,
     ) -> (Vec<Vertex>, Vec<Tile>) {
-        
         Self::generate_board_from_coords(rng, hex_coords)
     }
 
@@ -306,7 +326,7 @@ impl Game {
                 //and starts with roll phase
                 self.next_turn();
                 TurnPhase::RollResources
-            },
+            }
         };
 
         if let Some(winner_id) = self.check_for_winner() {
@@ -354,9 +374,13 @@ impl Game {
                     for player in &mut self.players {
                         let mut amount = 0;
                         //+1 for settlements
-                        if player.settlements.contains(&vertex_idx) { amount += 1; }
+                        if player.settlements.contains(&vertex_idx) {
+                            amount += 1;
+                        }
                         //+2 for cities
-                        if player.cities.contains(&vertex_idx) { amount += 2; }
+                        if player.cities.contains(&vertex_idx) {
+                            amount += 2;
+                        }
                         if amount > 0 {
                             //if the player doesnt have the resource already inserts a 0
                             //adds resources
@@ -368,9 +392,7 @@ impl Game {
         }
     }
 
-
     fn handle_robber(&mut self) {
-        
         //checks for each player if they have more than 7 resources
         for player in &mut self.players {
             if player.resources.values().sum::<u8>() > 7 {
@@ -396,9 +418,11 @@ impl Game {
                 }
             }
         }
-        
+
         //checks for available tiles for the robber
-        let available_tiles: Vec<usize> = self.tiles.iter()
+        let available_tiles: Vec<usize> = self
+            .tiles
+            .iter()
             .enumerate()
             //has to move to a new tile
             .filter(|(idx, _)| *idx != self.robber_tile)
@@ -407,11 +431,19 @@ impl Game {
 
         //prompts the current player to choose a tile
         let current_player = &self.players[self.current_player];
-        println!("Player {}: Choose a tile to place the robber:", current_player.name);
+        println!(
+            "Player {}: Choose a tile to place the robber:",
+            current_player.name
+        );
         //shows all available tiles
         for (i, tile) in available_tiles.iter().enumerate() {
             let tile_resource = &self.tiles[*tile].resource;
-            println!("Option {}: Tile {} with resource {:?}", i + 1, *tile, tile_resource);
+            println!(
+                "Option {}: Tile {} with resource {:?}",
+                i + 1,
+                *tile,
+                tile_resource
+            );
         }
 
         //placeholder untill implemented IO
@@ -424,9 +456,13 @@ impl Game {
         let robber_tile = &self.tiles[self.robber_tile];
 
         //gathers player IDs from players that can be robbed
-        let robbable_players: Vec<usize> = robber_tile.vertices.iter()
+        let robbable_players: Vec<usize> = robber_tile
+            .vertices
+            .iter()
             .filter_map(|&vertex_idx| {
-                self.players.iter().find(|p| p.settlements.contains(&vertex_idx) || p.cities.contains(&vertex_idx))
+                self.players
+                    .iter()
+                    .find(|p| p.settlements.contains(&vertex_idx) || p.cities.contains(&vertex_idx))
             })
             .map(|p| p.id)
             .collect();
@@ -451,15 +487,14 @@ impl Game {
         let robbed_player = &mut self.players[victim_id];
 
         //makes a vector of available resources to steal from the chosen player
-        let available_resources: Vec<Resource> = robbed_player.resources
+        let available_resources: Vec<Resource> = robbed_player
+            .resources
             .iter()
-            .filter_map(|(resource, &amount)| {
-                if amount > 0 {
-                    Some(*resource)
-                } else {
-                    None
-                }
-            })
+            .filter_map(
+                |(resource, &amount)| {
+                    if amount > 0 { Some(*resource) } else { None }
+                },
+            )
             .collect();
 
         //ends the function if no available resources
@@ -474,16 +509,22 @@ impl Game {
         //checks the targeted players Resource HashMap
         if let Some(amount) = robbed_player.resources.get_mut(&stolen_resource) {
             if *amount > 0 {
-                    *amount -= 1; //takes 1 resource from the targeted player
-                 
-                let entry = self.players[self.current_player].resources.entry(stolen_resource).or_insert(0);
+                *amount -= 1; //takes 1 resource from the targeted player
+
+                let entry = self.players[self.current_player]
+                    .resources
+                    .entry(stolen_resource)
+                    .or_insert(0);
                 *entry += 1; //gives 1 resource to the turn player
             }
         }
     }
 
-    pub fn build_settlement(&mut self, player_id: usize, vertex: usize) -> Result<(), &'static str> {
-        
+    pub fn build_settlement(
+        &mut self,
+        player_id: usize,
+        vertex: usize,
+    ) -> Result<(), &'static str> {
         //if setup phase
         let is_setup = matches!(
             self.game_phase,
@@ -491,13 +532,21 @@ impl Game {
         );
 
         //checks if vertex is free
-        if self.players.iter().any(|p| p.settlements.contains(&vertex) || p.cities.contains(&vertex)) {
+        if self
+            .players
+            .iter()
+            .any(|p| p.settlements.contains(&vertex) || p.cities.contains(&vertex))
+        {
             return Err("Vertex is already occupied");
         }
 
         //distance rule
         for neighbor in &self.vertices[vertex].neighbors {
-            if self.players.iter().any(|p| p.settlements.contains(neighbor) || p.cities.contains(neighbor)) {
+            if self
+                .players
+                .iter()
+                .any(|p| p.settlements.contains(neighbor) || p.cities.contains(neighbor))
+            {
                 return Err("Too close to another settlement or city");
             }
         }
@@ -508,7 +557,10 @@ impl Game {
         //has to be conneceted to a road
         //ignore during setup phase
         if !is_setup {
-            let is_connected = player.roads.iter().any(|&(x, y)| x == vertex || y == vertex);
+            let is_connected = player
+                .roads
+                .iter()
+                .any(|&(x, y)| x == vertex || y == vertex);
             if !is_connected {
                 return Err("Settlement must be connected to your road");
             }
@@ -521,19 +573,28 @@ impl Game {
 
         //doesnt allow building 2 settlements in a row during setup
         if is_setup && self.setup_placement != 0 {
-            return Err("Must build road after settlement")
+            return Err("Must build road after settlement");
         }
 
         //ignore during setup phase
         if !is_setup {
             //needed resources
-            let needed = [Resource::Brick, Resource::Lumber, Resource::Wool, Resource::Grain];
+            let needed = [
+                Resource::Brick,
+                Resource::Lumber,
+                Resource::Wool,
+                Resource::Grain,
+            ];
             //checks resources
             for &r in &needed {
-                if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+                if player.resources.get(&r).unwrap_or(&0) < &1 {
+                    return Err("Not enough resources");
+                }
             }
             //removes resources
-            for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+            for &r in &needed {
+                *player.resources.get_mut(&r).unwrap() -= 1;
+            }
         }
 
         //adds settlement
@@ -550,7 +611,9 @@ impl Game {
 
     pub fn build_city(&mut self, player_id: usize, vertex: usize) -> Result<(), &'static str> {
         //checks if its already occupied by another player
-        if self.players.iter().any(|p| (p.id != player_id) && (p.settlements.contains(&vertex) || p.cities.contains(&vertex))) {
+        if self.players.iter().any(|p| {
+            (p.id != player_id) && (p.settlements.contains(&vertex) || p.cities.contains(&vertex))
+        }) {
             return Err("This vertex is already occupied by another player");
         }
         let is_standard = self.tiles.len() <= 19;
@@ -558,8 +621,9 @@ impl Game {
 
         //check if there is a settlement
         if !player.settlements.contains(&vertex) {
-            return Err("No settlement to upgrade on this vertex");}
-        
+            return Err("No settlement to upgrade on this vertex");
+        }
+
         //cant upgrade a city
         if player.cities.contains(&vertex) {
             return Err("City already exists on this vertex");
@@ -569,15 +633,19 @@ impl Game {
         if is_standard && player.cities.len() >= 4 {
             return Err("Maximum number of cities reached");
         }
-        
+
         //needed resources
-        let needed = [(Resource::Grain,2),(Resource::Ore,3)];
+        let needed = [(Resource::Grain, 2), (Resource::Ore, 3)];
         //checks resources
-        for &(r,c) in &needed {
-            if player.resources.get(&r).unwrap_or(&0) < &c { return Err("Not enough resources"); }
+        for &(r, c) in &needed {
+            if player.resources.get(&r).unwrap_or(&0) < &c {
+                return Err("Not enough resources");
+            }
         }
         //removes resources
-        for &(r,c) in &needed { *player.resources.get_mut(&r).unwrap() -= c; }
+        for &(r, c) in &needed {
+            *player.resources.get_mut(&r).unwrap() -= c;
+        }
 
         //removes settlement
         player.settlements.remove(&vertex);
@@ -590,35 +658,33 @@ impl Game {
 
     //makes it so road (0,1) and (1,0) are the same
     fn normalize_road(a: usize, b: usize) -> (usize, usize) {
-    if a < b {
-        (a, b)
-    } else {
-        (b, a)
+        if a < b { (a, b) } else { (b, a) }
     }
-}
 
     pub fn build_road(&mut self, player_id: usize, a: usize, b: usize) -> Result<(), &'static str> {
-        
         //if setup phase
         let is_setup = matches!(
             self.game_phase,
             GamePhase::SetupRound1 | GamePhase::SetupRound2
         );
-        
-        let player = &mut self.players[player_id];      
+
+        let player = &mut self.players[player_id];
         //vertices must be neighbors
         if !self.vertices[a].neighbors.contains(&b) {
             return Err("Vertices not adjacent");
         }
 
         //road has to be connected to a settlment, city or road
-        let is_connected = 
-            player.settlements.contains(&a) || player.cities.contains(&a) || 
-            player.roads.iter().any(|&(x, y)| x == a || y == a) ||
-            player.settlements.contains(&b) || player.cities.contains(&b) || 
-            player.roads.iter().any(|&(x, y)| x == b || y == b);
+        let is_connected = player.settlements.contains(&a)
+            || player.cities.contains(&a)
+            || player.roads.iter().any(|&(x, y)| x == a || y == a)
+            || player.settlements.contains(&b)
+            || player.cities.contains(&b)
+            || player.roads.iter().any(|&(x, y)| x == b || y == b);
         if !is_connected {
-        return Err("Road must be connected to your existing infrastructure (settlement, city, or road)");
+            return Err(
+                "Road must be connected to your existing infrastructure (settlement, city, or road)",
+            );
         }
 
         //normalize road
@@ -643,7 +709,8 @@ impl Game {
         //make player place settlement before road
         //road has to be connected
         if is_setup {
-            let settlement = player.last_setup_settlement
+            let settlement = player
+                .last_setup_settlement
                 .ok_or("Must place settlement before road")?;
 
             if a != settlement && b != settlement {
@@ -657,10 +724,14 @@ impl Game {
             let needed = [Resource::Brick, Resource::Lumber];
             //checks resources
             for &r in &needed {
-                if player.resources.get(&r).unwrap_or(&0) < &1 { return Err("Not enough resources"); }
+                if player.resources.get(&r).unwrap_or(&0) < &1 {
+                    return Err("Not enough resources");
+                }
             }
             //removes resources
-            for &r in &needed { *player.resources.get_mut(&r).unwrap() -= 1; }
+            for &r in &needed {
+                *player.resources.get_mut(&r).unwrap() -= 1;
+            }
         }
 
         //adds road
@@ -713,7 +784,6 @@ impl Game {
     }
 }
 
-
 //-------------------------
 //----------TESTS----------
 //-------------------------
@@ -746,8 +816,10 @@ mod tests {
         for vertex in &game.vertices {
             for &neighbor_idx in &vertex.neighbors {
                 let neighbor = &game.vertices[neighbor_idx];
-                assert!(neighbor.neighbors.contains(&vertex.id),
-                    "Neighbor relationship should be bidirectional");
+                assert!(
+                    neighbor.neighbors.contains(&vertex.id),
+                    "Neighbor relationship should be bidirectional"
+                );
             }
         }
     }
@@ -756,10 +828,16 @@ mod tests {
     #[test]
     fn test_single_desert_tile() {
         let game = Game::new(vec!["Alice", "Bob"]);
-        let desert_tiles: Vec<&Tile> = game.tiles.iter()
+        let desert_tiles: Vec<&Tile> = game
+            .tiles
+            .iter()
             .filter(|t| t.resource == Resource::Desert)
             .collect();
-        assert_eq!(desert_tiles.len(), 1, "There should be exactly one desert tile");
+        assert_eq!(
+            desert_tiles.len(),
+            1,
+            "There should be exactly one desert tile"
+        );
     }
 
     //number tokens are valid
@@ -768,12 +846,20 @@ mod tests {
         let game = Game::new(vec!["Alice", "Bob"]);
         for tile in &game.tiles {
             if tile.resource != Resource::Desert {
-                assert!(tile.number_token.is_some(), "Non-desert tiles should have number tokens");
+                assert!(
+                    tile.number_token.is_some(),
+                    "Non-desert tiles should have number tokens"
+                );
                 let token = tile.number_token.unwrap();
-                assert!((2..=12).contains(&token) && token != 7,
-                    "Number token should be between 2 and 12, excluding 7");
+                assert!(
+                    (2..=12).contains(&token) && token != 7,
+                    "Number token should be between 2 and 12, excluding 7"
+                );
             } else {
-                assert!(tile.number_token.is_none(), "Desert tile should have no number token");
+                assert!(
+                    tile.number_token.is_none(),
+                    "Desert tile should have no number token"
+                );
             }
         }
     }
@@ -782,13 +868,8 @@ mod tests {
     #[test]
     fn test_small_board() {
         let mut rng = rand::rng();
-        let hex_coords = vec![
-            (0, 0),
-            (1, 0), (2, 0),
-            (0, 1), (1, 1), (2, 1),
-            (1, 2),
-        ];
-        
+        let hex_coords = vec![(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (1, 2)];
+
         let (_vertices, tiles) = Game::generate_board_custom(&mut rng, hex_coords);
         assert_eq!(tiles.len(), 7);
         for tile in &tiles {
@@ -801,9 +882,15 @@ mod tests {
     fn test_rectangular_board() {
         let mut rng = rand::rng();
         let hex_coords = vec![
-            (0,0),(1,0),(2,0),
-            (0,1),(1,1),(2,1),
-            (0,2),(1,2),(2,2),
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (0, 1),
+            (1, 1),
+            (2, 1),
+            (0, 2),
+            (1, 2),
+            (2, 2),
         ];
         let (_vertices, tiles) = Game::generate_board_custom(&mut rng, hex_coords);
         assert_eq!(tiles.len(), 9);
@@ -813,16 +900,11 @@ mod tests {
     }
 
     #[cfg(test)]
-
     #[test]
     fn test_vertex_connections() {
         let mut rng = rand::rng();
 
-        let hex_coords = vec![
-            (7,-1),
-            (0,0), (1,0), (7,0), (8,0),
-            (-1,1), (0,1)
-        ];
+        let hex_coords = vec![(7, -1), (0, 0), (1, 0), (7, 0), (8, 0), (-1, 1), (0, 1)];
 
         let (vertices, tiles) = Game::generate_board_from_coords(&mut rng, hex_coords);
 
@@ -833,33 +915,47 @@ mod tests {
 
         //each vertex should have at least 2 neighbors
         for vertex in &vertices {
-            assert!(vertex.neighbors.len() >= 2, 
-                "Vertex {} has too few neighbors: {:?}", vertex.id, vertex.neighbors);
+            assert!(
+                vertex.neighbors.len() >= 2,
+                "Vertex {} has too few neighbors: {:?}",
+                vertex.id,
+                vertex.neighbors
+            );
         }
 
         //print the total amount of vertices
         println!("Total vertices: {}", vertices.len());
-        
+
         //for each vertex print its neighbors
         for vertex in &vertices {
             let mut neighbor_indices = vec![];
-                for neighbor in &vertex.neighbors {
+            for neighbor in &vertex.neighbors {
                 neighbor_indices.push(*neighbor);
             }
-            println!(
-                "Vertex {} (neighbors: {:?})",
-                vertex.id,
-                neighbor_indices
-            );
+            println!("Vertex {} (neighbors: {:?})", vertex.id, neighbor_indices);
         }
 
         //standard 19 tile Catan coordinates
         let hex_coords = vec![
-            (0,0),(1,0),(2,0),
-            (-1,1),(0,1),(1,1),(2,1),
-            (-2,2),(-1,2),(0,2),(1,2),(2,2),
-            (-2,3),(-1,3),(0,3),(1,3),
-            (-2,4),(-1,4),(0,4),
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+            (2, 1),
+            (-2, 2),
+            (-1, 2),
+            (0, 2),
+            (1, 2),
+            (2, 2),
+            (-2, 3),
+            (-1, 3),
+            (0, 3),
+            (1, 3),
+            (-2, 4),
+            (-1, 4),
+            (0, 4),
         ];
 
         let (vertices, tiles) = Game::generate_board_from_coords(&mut rng, hex_coords);
@@ -871,13 +967,17 @@ mod tests {
 
         //each vertex should have at least 2 neighbors
         for vertex in &vertices {
-            assert!(vertex.neighbors.len() >= 2, 
-                "Vertex {} has too few neighbors: {:?}", vertex.id, vertex.neighbors);
+            assert!(
+                vertex.neighbors.len() >= 2,
+                "Vertex {} has too few neighbors: {:?}",
+                vertex.id,
+                vertex.neighbors
+            );
         }
 
         //print the total amount of vertices
         println!("Total vertices: {}", vertices.len());
-        
+
         //for each vertex print its neighbors
         for vertex in &vertices {
             let mut neighbor_indices = vec![];
@@ -885,11 +985,7 @@ mod tests {
             for neighbor in &vertex.neighbors {
                 neighbor_indices.push(*neighbor);
             }
-            println!(
-                "Vertex {} (neighbors: {:?})",
-                vertex.id,
-                neighbor_indices
-            );
+            println!("Vertex {} (neighbors: {:?})", vertex.id, neighbor_indices);
         }
     }
 }

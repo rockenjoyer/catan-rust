@@ -1,4 +1,4 @@
 pub mod bevy;
-pub mod system;
 pub mod interface;
+pub mod system;
 pub mod visual;

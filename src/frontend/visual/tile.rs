@@ -1,31 +1,44 @@
-//"TileVisual" stores the data needed to render or interact with a tile.
+//"TileVisual" stores the data needed to render or interact with a tile
 
-use bevy::prelude::*;
 use crate::backend::game::Resource;
 use crate::backend::game::Resource::*;
+use bevy::prelude::*;
+use bevy_egui::egui;
 
-//"Component": attached to tile entities containing game-relevant metadata.
+//"Component": attached to tile entities containing game-relevant metadata
 #[derive(Component)]
 pub struct TileVisual {
-    //The tile's 6 corners.
+    //the tile's 6 corners
     pub vertices: [usize; 6],
-    //The resource type.
+    //the resource type
     pub resource: Resource,
-    //Number token used for dice-based resources.
+    //number token used for dice-based resources
     pub number_token: Option<u8>,
-    //Whether the tile is highlighted (e.g. hover or selection).
+    //whether the tile is highlighted (e.g. hover or selection)
     pub highlighted: bool,
 }
 
-//Later, we can replace the colors with textures. This is for testing purposes.
+//resource to track whether tile visuals are shown or not
+#[derive(Resource)]
+pub struct TileShowing {
+    pub enabled: bool,
+}
+
+impl Default for TileShowing {
+    fn default() -> Self {
+        TileShowing { enabled: true }
+    }
+}
+
+//later, we can replace the colors with textures, this is for testing purposes
 #[allow(dead_code)]
-fn tile_color(resource: Resource) -> Color {
+pub fn tile_color(resource: Resource) -> egui::Color32 {
     match resource {
-        Brick  => Color::srgb(0.4, 0.3, 0.16),
-        Lumber => Color::srgb(0.28, 0.45, 0.14),
-        Wool   => Color::srgb(0.86, 0.92, 0.84),
-        Grain  => Color::srgb(0.9, 0.8, 0.36),
-        Ore    => Color::srgb(0.5, 0.5, 0.56),
-        Desert => Color::srgb(0.62, 0.53, 0.3)
+        Brick => egui::Color32::from_rgb(182, 105, 43),
+        Lumber => egui::Color32::from_rgb(45, 75, 35),
+        Wool => egui::Color32::from_rgb(225, 224, 207),
+        Grain => egui::Color32::from_rgb(242, 208, 97),
+        Ore => egui::Color32::from_rgb(130, 130, 130),
+        Desert => egui::Color32::from_rgb(218, 202, 78),
     }
 }
