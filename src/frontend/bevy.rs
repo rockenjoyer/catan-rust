@@ -1,9 +1,11 @@
-//bevy.rs is supposed to register rendering, camera, egui, input, etc.
+//bevy.rs is supposed to register camera, egui, input, etc.
 
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 
-use crate::frontend::interface::{game_overlay, game_panel};
+use crate::frontend::interface::{
+    game_panel, info_panel, rules_panel, settings_panel, volume_panel,
+};
 use crate::frontend::system::{camera, input};
 use crate::frontend::visual::tile;
 
@@ -12,8 +14,8 @@ impl Plugin for FrontendPlugin {
     fn build(&self, app: &mut App) {
         //install the egui plugin, register our startup and update systems
         app
-            //background-Color
-            .insert_resource(ClearColor(Color::srgb(0.07, 0.03, 0.0)))
+            //background-color
+            .insert_resource(ClearColor(Color::srgb(0.66, 0.58, 0.57)))
             .add_plugins(EguiPlugin::default())
             //startup runs once
             .add_systems(
@@ -30,10 +32,15 @@ impl Plugin for FrontendPlugin {
             //egui pass: egui-context-related systems
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
-                game_overlay::setup_overlay,
-            )
-            .add_systems(bevy_egui::EguiPrimaryContextPass, game_panel::setup_panels)
-            .add_systems(bevy_egui::EguiPrimaryContextPass, input::input_handling);
+                (
+                    info_panel::setup_info,
+                    game_panel::setup_game,
+                    rules_panel::setup_rules,
+                    settings_panel::setup_settings,
+                    volume_panel::setup_volume,
+                    input::input_handling,
+                ),
+            );
     }
 }
 

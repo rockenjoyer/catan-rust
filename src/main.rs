@@ -9,7 +9,6 @@ use catan_rust::frontend::bevy::FrontendPlugin;
 
 fn main() {
     //building a bevy app, creating the game state and registering the frontend plugin
-
     //example game setup
     let game = Rc::new(RefCell::new(Game::new(vec!["x", "y"])));
 
