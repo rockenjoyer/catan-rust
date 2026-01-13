@@ -1,5 +1,3 @@
-#![allow(dead_code)] //remove warnings about unused code
-
 use rand::Rng;
 use rand::seq::{IndexedRandom, SliceRandom};
 use std::collections::{HashMap, HashSet};

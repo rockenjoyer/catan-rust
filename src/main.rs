@@ -12,7 +12,7 @@ mod game;
 fn main() {
     //building a bevy app, creating the game state and registering the frontend plugin
     //example game setup
-    let game = Rc::new(RefCell::new(Game::new(vec!["x", "y"])));
+    let game = Rc::new(RefCell::new(Game::new(vec!["Name1", "Name2", "Name3", "Name4"])));
 
     App::new()
         .add_plugins(DefaultPlugins)

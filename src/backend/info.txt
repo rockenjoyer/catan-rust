@@ -1,2 +1,0 @@
-Added the game.rs file from the gamelogic branch into this backend folder for testing purposes.
-I did not change or write anything inside of game.rs, only inside of the frontend folder.
