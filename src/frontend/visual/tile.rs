@@ -24,6 +24,12 @@ impl Default for TileShowing {
     }
 }
 
+//track what was clicked
+#[derive(Resource, Default)]
+pub struct ClickedVertex {
+    pub vertex_id: Option<usize>,
+}
+
 //later, we can replace the colors with textures, this is for testing purposes
 pub fn tile_color(resource: Resource) -> egui::Color32 {
     match resource {
@@ -36,11 +42,11 @@ pub fn tile_color(resource: Resource) -> egui::Color32 {
     }
 }
 
-pub fn draw_tiles(ui: &mut egui::Ui, game: &Game) {
+pub fn draw_tiles(ui: &mut egui::Ui, game: &Game, clicked_vertex: &mut ClickedVertex) {
     //size of the space needed for the tile setup
     let size = egui::vec2(1300.0, 700.0);
     //setup egui-painter, used to draw shapes
-    let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
+    let (response, painter) = ui.allocate_painter(size, egui::Sense::click());
 
     let scale = 70.0;
     let origin = response.rect.center();
@@ -54,6 +60,94 @@ pub fn draw_tiles(ui: &mut egui::Ui, game: &Game) {
     //draw all the tiles
     for tile in &game.tiles {
         draw_hex(&painter, tile, &game.vertices, &screen);
+    }
+
+    //draw roads (colored)
+    for player in &game.players {
+        let road_color = match player.id {
+            0 => egui::Color32::RED,
+            1 => egui::Color32::BLUE,
+            2 => egui::Color32::GREEN,
+            3 => egui::Color32::ORANGE,
+            _ => egui::Color32::WHITE,
+        };
+
+        for &(v1, v2) in &player.roads {
+            let pos1 = screen(game.vertices[v1].pos);
+            let pos2 = screen(game.vertices[v2].pos);
+
+            painter.line_segment(
+                [pos1, pos2],
+                egui::Stroke::new(4.0, road_color),
+            );
+        }
+    }
+
+    //draw vertices as clickable circles
+    for vertex in &game.vertices {
+        let pos = screen(vertex.pos);
+        let radius = 10.0;
+
+        //check if any player has a settlement or city here
+        let mut owner_id: Option<usize> = None;
+        let mut is_city = false;
+
+        for player in &game.players {
+            
+            if player.cities.contains(&vertex.id) {
+                owner_id = Some(player.id);
+                is_city = true;
+                break;
+            }
+
+            if player.settlements.contains(&vertex.id) {
+                owner_id = Some(player.id);
+                break;
+            }
+        }
+
+        //check if mouse is over this vertex
+        let is_hovered = response.hover_pos().map_or(false, |mouse_pos| {
+            mouse_pos.distance(pos) <= radius
+        });
+
+        //draw vertex circle (with player colors if owned)
+        let color = if let Some(player_id) = owner_id {
+            //different colors for each player
+            match player_id {
+                0 => egui::Color32::RED,
+                1 => egui::Color32::BLUE,
+                2 => egui::Color32::GREEN,
+                3 => egui::Color32::ORANGE,
+                _ => egui::Color32::WHITE,
+            }
+        } else if is_hovered {
+            egui::Color32::YELLOW
+        } else {
+            egui::Color32::WHITE
+        };
+
+        //larger radius for cities
+        let actual_radius = if is_city {radius * 1.3} else {radius};
+
+        painter.circle_filled(pos, actual_radius, color);
+        painter.circle_stroke(pos, actual_radius, egui::Stroke::new(2.0, egui::Color32::BLACK));
+
+        //draw player number on settlement or city
+        if let Some(player_id) = owner_id {
+            painter.text(
+                pos,
+                egui::Align2::CENTER_CENTER,
+                (player_id + 1).to_string(),
+                egui::FontId::proportional(12.0),
+                egui::Color32::WHITE,
+            );
+        }
+
+        //handle click
+        if is_hovered && response.clicked() {
+            clicked_vertex.vertex_id = Some(vertex.id);
+        }
     }
 }
 

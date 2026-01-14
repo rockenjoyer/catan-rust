@@ -792,6 +792,7 @@ impl Game {
         //note last settlement during setup
         if is_setup {
             player.last_setup_settlement = Some(vertex);
+            self.setup_placement += 1;
         }
         Ok(())
     }
