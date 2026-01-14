@@ -5,8 +5,8 @@ use std::cell::RefCell;
 use std::rc::Rc; //mutability for "Game" while using Rc
 
 use catan_rust::backend::game::Game;
-use catan_rust::backend::networking2::server;
 use catan_rust::frontend::bevy::FrontendPlugin;
+
 
 fn main() {
     //building a bevy app, creating the game state and registering the frontend plugin

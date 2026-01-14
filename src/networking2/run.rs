@@ -7,14 +7,14 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
-use crate::shared::{SharedPlugin, FIXED_TIMESTEP_HZ};
+use crate::backend::networking2::shared::{SharedPlugin, FIXED_TIMESTEP_HZ};
 use bevy::prelude::*;
 use clap::{Parser, Subcommand, ValueEnum};
 use core::time::Duration;
 use lightyear::prelude::client::ClientPlugins;
 use lightyear::prelude::server::ServerPlugins;
 
-use crate::backend::networking2::{client, server, shared};
+use crate::networking2::{client, server, shared};
 
 
 /// CLI options to create an [`App`]
