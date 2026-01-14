@@ -43,6 +43,23 @@ pub struct DevCardInstance {
     pub age: usize,
 }
 
+//tracks input for dev cards
+#[derive(Debug, Clone)]
+pub enum DevCardInput {
+    None,
+    Knight { tile: usize, victim: Option<usize> },
+    Monopoly { resource: Resource },
+    RoadBuilding { r1: (usize, usize), r2: (usize, usize) },
+    YearOfPlenty { r1: Resource, r2: Resource },
+}
+
+//determines if a road is constructed regularly or using a roadbuilding dev card
+#[derive(Debug, Clone)]
+pub enum RoadBuildingMode {
+    Normal,
+    DevCardMode,
+}
+
 //vertices at hex corners
 #[derive(Debug)]
 pub struct Vertex {
@@ -902,7 +919,7 @@ impl Game {
         }
     }
 
-    pub fn build_road(&mut self, player_id: usize, a: usize, b: usize) -> Result<(), &'static str> {
+    pub fn build_road(&mut self, player_id: usize, a: usize, b: usize, mode: RoadBuildingMode) -> Result<(), &'static str> {
         
         //if setup phase
         let is_setup = matches!(
@@ -957,7 +974,7 @@ impl Game {
         }
 
         //ignore during setup phase
-        if !is_setup {
+        if !is_setup && matches!(mode, RoadBuildingMode::Normal) {
             //needed resources
             let needed = [Resource::Brick, Resource::Lumber];
             //checks resources
@@ -1048,7 +1065,7 @@ impl Game {
     }
 
     //You can do this in any Turn Phase
-    pub fn play_dev_card(&mut self, player_id: usize, card_id: usize) -> Result<(), &'static str> {
+    pub fn play_dev_card(&mut self, player_id: usize, card_id: usize, input: DevCardInput) -> Result<(), &'static str> {
         let player = &mut self.players[player_id];
 
         //not allowed during setup phase
@@ -1068,6 +1085,11 @@ impl Game {
 
         match chosen_card.card {
             DevCard::Knight => {
+                let (_tile, _victim) = match input {
+                    DevCardInput::Knight { tile, victim } => (tile, victim),
+                    _ => return Err("invalid input"),
+                };
+
                 player.knights_played += 1;
                 self.handle_knight();
                 self.update_largest_army(player_id);
@@ -1078,8 +1100,10 @@ impl Game {
             }
 
             DevCard::Monopoly => {
-                //Placeholder: chosen resource defaults to Ore for now, until we have IO
-                let chosen_resource = Resource::Ore;
+                let chosen_resource = match input {
+                    DevCardInput::Monopoly { resource } => resource,
+                    _ => return Err("invalid input"),
+                };
 
                 let mut acquired = 0;
 
@@ -1099,28 +1123,24 @@ impl Game {
             }
 
             DevCard::RoadBuilding => {
-                //give player lumber and brick (to keep the roadbuilding function intact)
-                *self.players[player_id].resources.entry(Resource::Lumber).or_insert(0) += 2;
-                *self.players[player_id].resources.entry(Resource::Brick).or_insert(0) += 2;
+                let (r1, r2) = match input {
+                    DevCardInput::RoadBuilding { r1, r2 } => (r1, r2),
+                    _ => return Err("invalid input"),
+                };
 
-                //Placeholder numbers until we have IO
-                let r1a = 1;
-                let r1b = 2;
-                let r2a = 2;
-                let r2b = 3;
-
-                //force player to build roads
-                self.build_road(player_id, r1a, r1b)?;
-                self.build_road(player_id, r2a, r2b)?;
+                //let player build roads
+                self.build_road(player_id, r1.0, r1.1, RoadBuildingMode::DevCardMode)?;
+                self.build_road(player_id, r2.0, r2.1, RoadBuildingMode::DevCardMode)?;
             }
 
             DevCard::YearOfPlenty => {
-                //Placeholder: Defaults to Ore and Wool until we have IO
-                let resource1 = Resource::Ore;
-                let resource2 = Resource::Wool;
+                let (r1, r2) = match input {
+                    DevCardInput::YearOfPlenty { r1, r2 } => (r1, r2),
+                    _ => return Err("invalid input"),
+                };
 
-                *self.players[player_id].resources.entry(resource1).or_insert(0) += 1;
-                *self.players[player_id].resources.entry(resource2).or_insert(0) += 1;
+                *self.players[player_id].resources.entry(r1).or_insert(0) += 1;
+                *self.players[player_id].resources.entry(r2).or_insert(0) += 1;
             }
         }
         
