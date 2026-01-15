@@ -11,7 +11,7 @@ pub fn setup_settings(mut context: EguiContexts) {
                     .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
                     .corner_radius(egui::CornerRadius::same(15)),
             )
-            .anchor(egui::Align2::LEFT_BOTTOM, (0.0, -40.0))
+            .anchor(egui::Align2::LEFT_TOP, (0.0, 40.0))
             .default_size((300.0, 600.0))
             .default_open(false)
             //display content

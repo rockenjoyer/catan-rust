@@ -12,7 +12,7 @@ pub fn setup_rules(mut context: EguiContexts) {
                     .corner_radius(egui::CornerRadius::same(15)),
             )
             .default_size((300.0, 200.0))
-            .anchor(egui::Align2::RIGHT_BOTTOM, (0.0, 0.0))
+            .anchor(egui::Align2::RIGHT_TOP, (0.0, 0.0))
             .default_open(false)
             //display content
             .show(context, |ui| {
