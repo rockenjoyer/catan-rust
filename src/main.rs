@@ -12,7 +12,7 @@ fn main() {
     //building a bevy app, creating the game state and registering the frontend plugin
     //example game setup
     let game = Rc::new(RefCell::new(Game::new(vec!["x", "y"])));
-
+    
     App::new()
         .add_plugins(DefaultPlugins)
         //inserting the game state as a "non-send resource" into bevy so that systems can borrow it on the main thread
