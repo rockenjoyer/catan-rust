@@ -1,5 +1,3 @@
-//"TileVisual" stores the data needed to render or interact with a tile
-
 use crate::backend::game::Resource::*;
 use crate::backend::game::{Game, Resource, Tile, Vertex};
 use bevy::prelude::*;
@@ -12,7 +10,11 @@ pub struct TileTextures {
     pub land: HashMap<Resource, egui::TextureHandle>,
     pub water: egui::TextureHandle,
 }
-
+//resource to track whether tile visuals are shown or not
+#[derive(Resource)]
+pub struct TileShowing {
+    pub enabled: bool,
+}
 #[derive(Component)]
 pub struct TileVisual {
     //whether the tile is highlighted (e.g. hover or selection)
@@ -24,18 +26,6 @@ pub struct WaterTile {
     pub pos: (f32, f32),
 }
 
-//resource to track whether tile visuals are shown or not
-#[derive(Resource)]
-pub struct TileShowing {
-    pub enabled: bool,
-}
-
-impl Default for TileShowing {
-    fn default() -> Self {
-        TileShowing { enabled: true }
-    }
-}
-
 //load the tile textures into egui
 pub fn setup_tile_textures(
     mut commands: Commands,
@@ -45,15 +35,10 @@ pub fn setup_tile_textures(
     if textures.is_some() {
         return;
     }
-
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-
-    let textures = load_tile_textures(ctx);
-    commands.insert_resource(textures);
-
-    info!("Tile textures have been loaded in successfully!");
+    if let Ok(ctx) = contexts.ctx_mut() {
+        commands.insert_resource(load_tile_textures(ctx));
+        info!("Tile textures loaded successfully!");
+    }
 }
 
 pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
@@ -61,23 +46,22 @@ pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
 
     //load an image file and convert it to an egui texture, specifically rgba8 format
     let load = |path: &str| {
-        let image = image::open(path)
-            .unwrap_or_else(|_| panic!("Failed to load tile image! {path}"))
+        let img = image::open(path)
+            .unwrap_or_else(|_| panic!("Failed to load tile image: {path}"))
             .to_rgba8();
-
-        //extract image dimensions etc.
-        let size = [image.width() as usize, image.height() as usize];
-        let pixels = image.into_raw();
 
         //convert the previous image data to egui texture
         ctx.load_texture(
             path.to_string(),
-            egui::ColorImage::from_rgba_unmultiplied(size, &pixels),
+            egui::ColorImage::from_rgba_unmultiplied(
+                [img.width() as usize, img.height() as usize],
+                &img.into_raw(),
+            ),
             egui::TextureOptions::LINEAR,
         )
     };
 
-    //load texture for each resource type from the assetsand insert into the hashmap
+    //load texture for each resource type from the assets and insert into the hashmap
     land.insert(Brick, load("assets/tiles/brick.png"));
     land.insert(Lumber, load("assets/tiles/lumber.png"));
     land.insert(Wool, load("assets/tiles/wool.png"));
@@ -100,33 +84,34 @@ pub fn tile_texture<'a>(textures: &'a TileTextures, resource: Resource) -> &'a e
 }
 
 //draw all the tiles in the game
-pub fn draw_tiles(ui: &mut egui::Ui, game: &Game, textures: &TileTextures) {
-    //size of the space needed for the tile setup
-    let size = egui::vec2(1300.0, 800.0);
-    //setup egui-painter, used to draw shapes and now textures
-    let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
-
-    //scale factor for converting game coordinates to pixels
-    let scale = 65.0;
-    //center point of the display area for positioning the board
-    let origin = response.rect.center();
-
-    //conversion function from coordinates to pixel coordinates
-    let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
-
+pub fn draw_tiles(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    board_rect: egui::Rect,
+    game: &Game,
+    textures: &TileTextures,
+    screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+) {
     //draw water FIRST! as the background
-    draw_water_background(&painter, &textures.water, response.rect);
+    painter.image(
+        textures.water.id(),
+        board_rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
 
     //draw the land tile on top of the water background
-    for tile in &game.tiles {
-        draw_hex(&painter, tile, &game.vertices, &screen, textures);
+    for (i, tile) in game.tiles.iter().enumerate() {
+        draw_hex(ui, painter, tile, i, &game.vertices, screen, textures);
     }
 }
 
 //draw a single land hex-tile with its texture
 pub fn draw_hex(
+    ui: &mut egui::Ui,
     painter: &egui::Painter,
     tile: &Tile,
+    index: usize,
     vertices: &[Vertex],
     screen: impl Fn((f32, f32)) -> egui::Pos2, //convert game vertices to screen coords
     textures: &TileTextures,
@@ -135,51 +120,53 @@ pub fn draw_hex(
     let points: Vec<_> = tile
         .vertices
         .iter()
-        .map(|&v| screen(vertices[v].pos)) //each vertex point -> screen
+        .map(|&v| screen(vertices[v].pos))
         .collect();
 
-    //calculate the center point of the hexagon by averaging all vertex positions
-    let center = points.iter().fold(egui::Vec2::ZERO, |a, b| a + b.to_vec2()) / points.len() as f32;
+    //calculate the center point of the hexagon
+    let center = points
+        .iter()
+        .fold(egui::Vec2::ZERO, |acc, p| acc + p.to_vec2())
+        / points.len() as f32;
 
     //the size of the texture rectangle that is to be drawn
-    let size = egui::vec2(120.0, 120.0);
+    let size = egui::vec2(110.0, 130.0);
+    let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
+
+    //hover detection
+    let id = egui::Id::new(("tile", index));
+    let hovered = ui.interact(base_rect, id, egui::Sense::hover()).hovered();
+
+    //elevation and shadow of the hovered tile
+    let lift = if hovered { -10.0 } else { 0.0 };
+    let shadow_offset = if hovered { 10.0 } else { 5.0 };
+    let tile_rect = base_rect.translate(egui::vec2(0.0, lift));
+
+    //draw a shadow underneath the tile
+    painter.image(
+        tile_texture(textures, tile.resource).id(),
+        tile_rect.translate(egui::vec2(5.0, shadow_offset)),
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::from_black_alpha(100),
+    );
 
     //draw the resource tile texture at the center position
     painter.image(
         tile_texture(textures, tile.resource).id(),
-        egui::Rect::from_center_size(center.to_pos2(), size),
+        tile_rect,
         egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
         egui::Color32::WHITE,
     );
 
-    /*
-    //draw the hex-tile as a convex polygon
-    painter.add(egui::Shape::convex_polygon(
-        points.clone(),             //give the polygon its corners
-        egui::Color32::TRANSPARENT, //fill color
-        egui::Stroke::new(2.0, egui::Color32::BLACK),
-    ));
-    */
-
     //draw the number token on top of the tile, if it exits (not desert)
+    //also with a shadow and lifted if hovered
     if let Some(n) = tile.number_token {
         painter.text(
-            center.to_pos2(),
+            center.to_pos2() + egui::vec2(0.0, lift),
             egui::Align2::CENTER_CENTER,
             n.to_string(),
             egui::FontId::proportional(20.0),
-            egui::Color32::BLACK,
+            egui::Color32::from_hex("#22170c").unwrap(),
         );
     }
-}
-
-//draw the water background texture across the entire display area
-fn draw_water_background(painter: &egui::Painter, texture: &egui::TextureHandle, rect: egui::Rect) {
-    //the entire rect will be filled with the water texture
-    painter.image(
-        texture.id(),
-        rect,
-        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-        egui::Color32::WHITE,
-    );
 }

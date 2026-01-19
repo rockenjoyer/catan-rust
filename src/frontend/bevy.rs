@@ -1,30 +1,44 @@
-//bevy.rs is supposed to register camera, egui, input, etc.
-
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
+use bevy_kira_audio::prelude::*;
 
 use crate::frontend::interface::{
     game_panel, info_panel, rules_panel, settings_panel, volume_panel,
 };
 use crate::frontend::system::{camera, input};
-use crate::frontend::visual::tile;
+use crate::frontend::visual::{cards, city, road, settlement, tile};
 
 pub struct FrontendPlugin;
+
 impl Plugin for FrontendPlugin {
     fn build(&self, app: &mut App) {
         //install the egui plugin, register our startup and update systems
         app
             //background-color
-            .insert_resource(ClearColor(Color::srgb(0.66, 0.58, 0.57)))
-            //resource controls whether tile visuals are shown or not
-            .insert_resource(tile::TileShowing::default())
+            .insert_resource(ClearColor(Color::WHITE))
             .add_plugins(EguiPlugin::default())
+            //audio plugin for background music
+            .add_plugins(AudioPlugin::default())
             //startup runs once
             .add_systems(
                 Startup,
-                (change_title, camera::setup_camera, input::setup_cursor),
+                (
+                    play_background_music,
+                    camera::setup_camera,
+                    input::setup_cursor,
+                ),
             )
-            .add_systems(Update, (input::input_handling, tile::setup_tile_textures))
+            .add_systems(
+                Update,
+                (
+                    input::input_handling,
+                    tile::setup_tile_textures,
+                    road::setup_road_textures,
+                    settlement::setup_settlement_textures,
+                    city::setup_city_textures,
+                    cards::setup_cards_textures,
+                ),
+            )
             //egui pass: egui-context-related systems
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
@@ -33,14 +47,15 @@ impl Plugin for FrontendPlugin {
                     rules_panel::setup_rules,
                     settings_panel::setup_settings,
                     volume_panel::setup_volume,
-                    input::input_handling,
                     game_panel::setup_game,
                 ),
             );
     }
 }
 
-fn change_title(mut window: Single<&mut Window>) {
-    window.title = format!("The Settlers of Catan - Rust Edition");
+//doens't work yet...
+fn play_background_music(asset_server: Res<AssetServer>, audio: Res<Audio>) {
+    //load the audio
+    let music = asset_server.load("audio/background_music.wav");
+    audio.play(music).looped().with_volume(0.5);
 }
-//TO-DO: add more functions for setting up the UI (like change_title)
