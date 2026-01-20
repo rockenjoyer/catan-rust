@@ -5,7 +5,7 @@ pub enum Channel {
     Reliable = 1,
     Unreliable = 2,
     Chat = 3,
-    // => todo: define default channel, define all needed channels
+    // => todo: define default channel
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -33,7 +33,4 @@ pub enum ServerMessage {
     Ready,
 
     Chat { player: u8, message: String },
-
-    ClientConnected { player: u8 },
-    ClientDisconnected { player: u8},
 }
