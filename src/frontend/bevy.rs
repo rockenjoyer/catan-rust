@@ -5,7 +5,7 @@ use crate::frontend::interface::{
     game_panel, info_panel, rules_panel, settings_panel, volume_panel,
 };
 use crate::frontend::system::{camera, input};
-use crate::frontend::visual::{tile, road, cards, settlement, city};
+use crate::frontend::visual::{tile, road, cards, settlement, city, dice};
 
 pub struct FrontendPlugin;
 impl Plugin for FrontendPlugin {
@@ -27,6 +27,7 @@ impl Plugin for FrontendPlugin {
             .insert_resource(tile::TileShowing::default())
             .insert_resource(tile::ClickedVertex::default())
             .insert_resource(game_panel::RoadBuildingState::default())
+            .insert_resource(dice::DiceRollState::default())
             
             //egui pass: texture loading and UI systems
             .add_systems(

@@ -3,20 +3,21 @@ use bevy_egui::{EguiContexts, egui};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::backend::game::{Game, GamePhase, RoadBuildingMode};
+use crate::backend::game::{Game, GamePhase, RoadBuildingMode, Resource as GameResource};
 use crate::frontend::interface::style::apply_style;
 use crate::frontend::visual::{
     cards::{CardsTextures, draw_cards},
     road::{RoadTextures, draw_roads},
     settlement::{SettlementTextures, draw_settlements},
     city::{CityTextures, draw_cities},
-    tile::{TileTextures, TileShowing, ClickedVertex, draw_tiles},
+    tile::{TileTextures, TileShowing, ClickedVertex, draw_tiles, draw_vertices},
+    dice::{DiceRollState, draw_dice_roll},
 };
 
 //resource to track road building state
 #[derive(Resource, Default)]
 pub struct RoadBuildingState {
-    pub first_vertex: Option<usize>,
+    pub last_two_vertices: Vec<usize>,
 }
 
 pub fn setup_game(
@@ -25,11 +26,13 @@ pub fn setup_game(
     mut tiles_shown: ResMut<TileShowing>,
     mut clicked_vertex: ResMut<ClickedVertex>,
     mut road_state: ResMut<RoadBuildingState>,
+    mut dice_state: ResMut<DiceRollState>,
     tile_textures: Option<Res<TileTextures>>,
     road_textures: Option<Res<RoadTextures>>,
     card_textures: Option<Res<CardsTextures>>,
     settlement_textures: Option<Res<SettlementTextures>>,
     city_textures: Option<Res<CityTextures>>,
+    time: Res<Time>,
 ) {
     //wait for textures to load
     let Some(tile_textures) = tile_textures else { 
@@ -56,6 +59,9 @@ pub fn setup_game(
     if let Ok(context) = context.ctx_mut() {
         //main game window
         apply_style(context);
+
+        //update dice animation
+        dice_state.update(time.delta_secs());
 
         //read game state for UI display
         let (current_phase, current_player_name, current_player_id, setup_placement) = {
@@ -92,8 +98,10 @@ pub fn setup_game(
                 let origin = response.rect.center();
                 let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
 
-                //draw everything
+                //draw everything (in correct layer order)
                 let game_borrow = game.borrow();
+                
+                //layer 1 (board background and tiles)
                 draw_tiles(
                     ui,
                     &painter,
@@ -103,9 +111,18 @@ pub fn setup_game(
                     &screen,
                     clicked_vertex.as_mut(),
                 );
+
+                //layer 2 (roads)
                 draw_roads(&painter, &game_borrow, &road_textures, &screen);
+
+                //layer 3 (vertices)
+                draw_vertices(ui, &painter, response.rect, &game_borrow, &screen, clicked_vertex.as_mut());
+
+                //layer 4 (settlements and cities)
                 draw_settlements(&painter, &game_borrow, &settlement_textures, &screen);
                 draw_cities(&painter, &game_borrow, &city_textures, &screen);
+                
+                //layer 5 (cards)
                 draw_cards(
                     &painter,
                     &card_textures,
@@ -113,6 +130,13 @@ pub fn setup_game(
                     egui::vec2(100.0, 130.0),
                     10.0,
                 );
+
+                //layer 6 (dice)
+                if dice_state.rolling || dice_state.final_result.is_some() {
+                    let dice_pos = egui::pos2(response.rect.right() - 150.0, response.rect.top() + 100.0);
+                    draw_dice_roll(&painter, dice_pos, &dice_state);
+                }
+
                 drop(game_borrow);
             });
 
@@ -123,6 +147,7 @@ pub fn setup_game(
             .anchor(egui::Align2::LEFT_TOP, (10.0, 10.0))
             .collapsible(false)
             .default_size((300.0, 400.0))
+            .order(egui::Order::Foreground)
             .show(context, |ui| {
                 //show current game phase
                 ui.label(format!("Phase: {:?}", current_phase));
@@ -147,42 +172,47 @@ pub fn setup_game(
                         } else if setup_placement == 1 {
                             ui.label("Setup: Place your road");
 
-                            //road requires 2 vertices
-                            if let Some(first) = road_state.first_vertex {
-                                ui.label(format!("First vertex: {}", first));
-                                ui.label("Click second vertex for road");
+                            // Track clicked vertices
+                            if let Some(vertex_id) = clicked_vertex.vertex_id {
+                                // Add to last two vertices
+                                road_state.last_two_vertices.push(vertex_id);
+                                // Keep only last 2
+                                if road_state.last_two_vertices.len() > 2 {
+                                    road_state.last_two_vertices.remove(0);
+                                }
+                                clicked_vertex.vertex_id = None;
+                            }
 
-                                if let Some(second) = clicked_vertex.vertex_id {
-                                    if second != first {
-                                        ui.label(format!("Second vertex: {}", second));
-                                        if ui.button("Build Road").clicked() {
-                                            should_build_road = true;
-                                        }
-                                        if ui.button("Cancel").clicked() {
-                                            road_state.first_vertex = None;
-                                            clicked_vertex.vertex_id = None;
-                                        }
-                                    } else {
-                                        ui.label("Select a different vertex!");
-                                    }
+                            // Show current selection
+                            if road_state.last_two_vertices.len() == 1 {
+                                ui.label(format!("Selected: {}", road_state.last_two_vertices[0]));
+                                ui.label("Click another vertex");
+                            } else if road_state.last_two_vertices.len() == 2 {
+                                ui.label(format!("Road: {} → {}", 
+                                    road_state.last_two_vertices[0], 
+                                    road_state.last_two_vertices[1]));
+                                
+                                if ui.button("Build Road").clicked() {
+                                    should_build_road = true;
+                                }
+                                
+                                if ui.button("Cancel").clicked() {
+                                    road_state.last_two_vertices.clear();
                                 }
                             } else {
-                                ui.label("Click first vertex for road");
-                                if clicked_vertex.vertex_id.is_some() {
-                                    ui.label(format!("Vertex {} selected", clicked_vertex.vertex_id.unwrap()));
-                                    if ui.button("Use this vertex").clicked() {
-                                        road_state.first_vertex = clicked_vertex.vertex_id;
-                                        clicked_vertex.vertex_id = None;
-                                    }
-                                }
+                                ui.label("Click first vertex");
                             }
                         }
                     }
                     GamePhase::NormalPlay => {
                         ui.label("Normal Play");
 
-                        if ui.button("Roll Dice").clicked() {
-                            should_roll_dice = true;
+                        if !dice_state.rolling {
+                            if ui.button("Roll Dice").clicked() {
+                                should_roll_dice = true;
+                            }
+                        } else {
+                            ui.label("Rolling...");
                         }
 
                         if let Some(vertex_id) = clicked_vertex.vertex_id {
@@ -220,7 +250,11 @@ pub fn setup_game(
         }
 
         if should_build_road {
-            if let (Some(first), Some(second)) = (road_state.first_vertex, clicked_vertex.vertex_id) {
+             if road_state.last_two_vertices.len() == 2 {
+                
+                let first = road_state.last_two_vertices[0];
+                let second = road_state.last_two_vertices[1];
+
                 let mut game = game.borrow_mut();
 
                 info!("Attempting to build road between {} and {}", first, second);
@@ -229,21 +263,65 @@ pub fn setup_game(
                     Ok(_) => {
                         info!("Road built! Setup placement now: {}", game.setup_placement);
                         info!("Current player now: {}", game.current_player);
-                        road_state.first_vertex = None;
-                        clicked_vertex.vertex_id = None;
+                        road_state.last_two_vertices.clear();
+                        clicked_vertex.selected_vertex = None;
                     }
                     Err(e) => {
-                        warn!("Failed: {}", e);
-                        road_state.first_vertex = None;
+                        warn!("Failed to build road: {}", e);
+                        road_state.last_two_vertices.clear();
                     }
                 }
             }
         }
 
-        if should_roll_dice {
-            let mut game = game.borrow_mut();
-            let roll = game.roll_dice();
-            info!("Rolled: {}", roll);
+        if should_roll_dice && !dice_state.rolling {
+            //generate dice roll values
+            use rand::Rng;
+            let mut rng = rand::rng();
+            let die1 = rng.random_range(1..=6);
+            let die2 = rng.random_range(1..=6);
+            dice_state.start_roll((die1, die2));
+            info!("Starting roll animation: {} + {} = {}", die1, die2, die1 + die2);
+        }
+
+        //process the roll only when the animation finishes
+        if !dice_state.rolling && dice_state.final_result.is_some() {
+            if let Some((d1, d2)) = dice_state.final_result {
+                let total = d1 + d2;
+                let mut game = game.borrow_mut();
+                
+                // Distribute resources/handle robber based on the roll
+                if total == 7 {
+                    // Placeholder - implement robbery and robber movement in UI later
+                    info!("Rolled 7 - robber activates!");
+                } else {
+                    // Collect resource updates first
+                    let mut updates: Vec<(usize, GameResource, u8)> = Vec::new();
+                    
+                    for (tile_idx, tile) in game.tiles.iter().enumerate() {
+                        if tile.number_token == Some(total) && tile_idx != game.robber_tile {
+                            for &vertex_idx in &tile.vertices {
+                                for (player_idx, player) in game.players.iter().enumerate() {
+                                    let mut amount = 0;
+                                    if player.settlements.contains(&vertex_idx) { amount += 1; }
+                                    if player.cities.contains(&vertex_idx) { amount += 2; }
+                                    if amount > 0 {
+                                        updates.push((player_idx, tile.resource, amount));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Apply updates
+                    for (player_idx, resource, amount) in updates {
+                        *game.players[player_idx].resources.entry(resource).or_insert(0) += amount;
+                    }
+                }
+                
+                info!("Roll completed: {}", total);
+                dice_state.final_result = None; // Clear so we don't process again
+            }
         }
 
         if should_end_turn {

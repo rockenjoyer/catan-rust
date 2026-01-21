@@ -27,6 +27,7 @@ impl Default for TileShowing {
 #[derive(Resource, Default)]
 pub struct ClickedVertex {
     pub vertex_id: Option<usize>,
+    pub selected_vertex: Option<usize>, //keeps glowing untill clicked off
 }
 
 #[derive(Component)]
@@ -115,8 +116,8 @@ pub fn draw_tiles(
         for vertex in &game.vertices {
             let pos = screen(vertex.pos);
             if mouse_pos.distance(pos) <= radius {
-                    hovered_vertex = Some(vertex.id);
-                    break;
+                hovered_vertex = Some(vertex.id);
+                break;
             }
         }
     }
@@ -138,7 +139,7 @@ pub fn draw_tiles(
                 
                 if base_rect.contains(mouse_pos) {
                     hovered_tile = Some(i);
-                    break; // Only hover ONE tile
+                    break; //only hover one tile
                 }
             }
         }
@@ -148,8 +149,36 @@ pub fn draw_tiles(
     for (i, tile) in game.tiles.iter().enumerate() {
         draw_hex(ui, painter, tile, i, &game.vertices, screen, textures, hovered_tile == Some(i));
     }
+}
 
-    //draw vertices as clickable circles
+//draw vertices as clickable circles (called separately to control layer order)
+pub fn draw_vertices(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    board_rect: egui::Rect,
+    game: &Game,
+    screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+    clicked_vertex: &mut ClickedVertex,
+) {
+    let vertex_response = ui.allocate_rect(board_rect, egui::Sense::click());
+
+    //check which vertex is being hovered
+    let mut hovered_vertex: Option<usize> = None;
+    let mouse_pos = vertex_response.hover_pos();
+
+    if let Some(mouse_pos) = mouse_pos {
+        let radius = 10.0;
+        for vertex in &game.vertices {
+            let pos = screen(vertex.pos);
+            if mouse_pos.distance(pos) <= radius {
+                hovered_vertex = Some(vertex.id);
+                break;
+            }
+        }
+    }
+
+    //draw vertices as clickable circles (only empty vertices)
+
     for vertex in &game.vertices {
         let pos = screen(vertex.pos);
         let radius = 10.0;
@@ -164,22 +193,43 @@ pub fn draw_tiles(
             }
         }
 
-        //check if mouse is over this vertex
-        let is_hovered = hovered_vertex == Some(vertex.id);
+        //only draw circle if vertex is empty
+        if !is_occupied {
+            //check if mouse is over this vertex or if it is the selected vertex
+            let is_hovered = hovered_vertex == Some(vertex.id);
+            let is_selected = clicked_vertex.selected_vertex == Some(vertex.id);
 
-        //draw vertex circle (with player colors if owned)
-        let color = if is_hovered {
-            egui::Color32::YELLOW
-        } else {
-            egui::Color32::WHITE
-        };
+            let color = if is_hovered || is_selected {
+                egui::Color32::YELLOW
+            } else {
+                egui::Color32::WHITE
+            };
 
-        painter.circle_filled(pos, radius, color);
-        painter.circle_stroke(pos, radius, egui::Stroke::new(2.0, egui::Color32::BLACK));
+            painter.circle_filled(pos, radius, color);
+            painter.circle_stroke(pos, radius, egui::Stroke::new(2.0, egui::Color32::BLACK));
+        
+            //draw vertex ID on top
+            painter.text(
+                pos,
+                egui::Align2::CENTER_CENTER,
+                vertex.id.to_string(),
+                egui::FontId::proportional(14.0),
+                egui::Color32::BLACK,
+            );
+        }
 
         //handle click
-        if hovered_vertex == Some(vertex.id) && vertex_response.clicked() {
-            clicked_vertex.vertex_id = Some(vertex.id);
+        if vertex_response.clicked() {
+            if let Some(mouse_pos) = vertex_response.interact_pointer_pos() {
+                // Check if clicked on a vertex
+                if mouse_pos.distance(pos) <= radius {
+                    clicked_vertex.vertex_id = Some(vertex.id);
+                    clicked_vertex.selected_vertex = Some(vertex.id);
+                } else if hovered_vertex.is_none() {
+                    // Clicked elsewhere (not on any vertex) - deselect
+                    clicked_vertex.selected_vertex = None;
+                }
+            }
         }
     }
 }
