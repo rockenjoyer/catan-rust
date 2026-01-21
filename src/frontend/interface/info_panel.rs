@@ -13,11 +13,7 @@ pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>,) 
         //info window top
         apply_style(context);
         egui::Window::new("The Settlers of Catan")
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
-                    .corner_radius(egui::CornerRadius::same(15)),
-            )
+            .frame(egui::Frame::NONE)
             .resizable(false)
             .collapsible(false)
             .anchor(egui::Align2::CENTER_TOP, (0.0, 0.0))
@@ -29,11 +25,8 @@ pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>,) 
 
         //info window bottom
         egui::Window::new("Current Round Info")
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
-                    .corner_radius(egui::CornerRadius::same(15)),
-            )
+            .frame(egui::Frame::NONE)
+            .order(egui::Order::Foreground) 
             .resizable(false)
             .collapsible(false)
             .anchor(egui::Align2::CENTER_BOTTOM, (0.0, 0.0))

@@ -8,11 +8,8 @@ pub fn setup_volume(mut context: EguiContexts) {
         apply_style(context);
         egui::Window::new("Volume")
             //layout and style settings
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
-                    .corner_radius(egui::CornerRadius::same(15)),
-            )
+            .frame(egui::Frame::NONE)
+            .order(egui::Order::Foreground) 
             .anchor(egui::Align2::LEFT_BOTTOM, (0.0, 0.0))
             .default_size((300.0, 600.0))
             .default_open(false)

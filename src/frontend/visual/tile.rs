@@ -1,15 +1,14 @@
-//"TileVisual" stores the data needed to render or interact with a tile
-
 use crate::backend::game::Resource::*;
 use crate::backend::game::{Game, Resource, Tile, Vertex};
 use bevy::prelude::*;
-use bevy_egui::egui;
+use bevy_egui::{EguiContexts, egui};
+use std::collections::HashMap;
 
-//"Component": attached to tile entities containing game-relevant metadata
-#[derive(Component)]
-pub struct TileVisual {
-    //whether the tile is highlighted (e.g. hover or selection)
-    pub highlighted: bool,
+//resource to store tile textures in a hashmap
+#[derive(Resource)]
+pub struct TileTextures {
+    pub land: HashMap<Resource, egui::TextureHandle>,
+    pub water: egui::TextureHandle,
 }
 
 //resource to track whether tile visuals are shown or not
@@ -30,57 +29,124 @@ pub struct ClickedVertex {
     pub vertex_id: Option<usize>,
 }
 
-//later, we can replace the colors with textures, this is for testing purposes
-pub fn tile_color(resource: Resource) -> egui::Color32 {
-    match resource {
-        Brick => egui::Color32::from_rgb(182, 105, 43),
-        Lumber => egui::Color32::from_rgb(152, 168, 105),
-        Wool => egui::Color32::from_rgb(211, 211, 211),
-        Grain => egui::Color32::from_rgb(255, 238, 140),
-        Ore => egui::Color32::from_rgb(137, 137, 137),
-        Desert => egui::Color32::from_rgb(218, 202, 78),
+#[derive(Component)]
+pub struct TileVisual {
+    pub highlighted: bool,
+}
+
+//load the tile textures into egui
+pub fn setup_tile_textures(
+    mut commands: Commands,
+    mut contexts: EguiContexts,
+    textures: Option<Res<TileTextures>>,
+) {
+    if textures.is_some() {
+        return;
+    }
+    if let Ok(ctx) = contexts.ctx_mut() {
+        commands.insert_resource(load_tile_textures(ctx));
+        info!("Tile textures loaded successfully!");
     }
 }
 
-pub fn draw_tiles(ui: &mut egui::Ui, game: &Game, clicked_vertex: &mut ClickedVertex) {
-    //size of the space needed for the tile setup
-    let size = egui::vec2(1300.0, 700.0);
-    //setup egui-painter, used to draw shapes
-    let (response, painter) = ui.allocate_painter(size, egui::Sense::click());
+pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
+    let mut land = HashMap::new();
 
-    let scale = 70.0;
-    let origin = response.rect.center();
+    let load = |path: &str| {
+        let img = image::open(path)
+            .unwrap_or_else(|_| panic!("Failed to load tile image: {path}"))
+            .to_rgba8();
 
-    let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
+        ctx.load_texture(
+            path.to_string(),
+            egui::ColorImage::from_rgba_unmultiplied(
+                [img.width() as usize, img.height() as usize],
+                &img.into_raw(),
+            ),
+            egui::TextureOptions::LINEAR,
+        )
+    };
 
-    //draw water
-    let water = response.rect.shrink(50.0);
-    painter.rect_filled(water, 20.0, egui::Color32::from_rgb(95, 124, 146));
+    land.insert(Brick, load("assets/tiles/brick.png"));
+    land.insert(Lumber, load("assets/tiles/lumber.png"));
+    land.insert(Wool, load("assets/tiles/wool.png"));
+    land.insert(Grain, load("assets/tiles/grain.png"));
+    land.insert(Ore, load("assets/tiles/ore.png"));
+    land.insert(Desert, load("assets/tiles/desert.png"));
 
-    //draw all the tiles
-    for tile in &game.tiles {
-        draw_hex(&painter, tile, &game.vertices, &screen);
+    let water = load("assets/tiles/water_background.png");
+
+    TileTextures { land, water }
+}
+
+pub fn tile_texture<'a>(textures: &'a TileTextures, resource: Resource) -> &'a egui::TextureHandle {
+    textures
+        .land
+        .get(&resource)
+        .expect("The land tile texture is missing!")
+}
+
+//draw all the tiles with click detection for vertices
+pub fn draw_tiles(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    board_rect: egui::Rect,
+    game: &Game,
+    textures: &TileTextures,
+    screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+    clicked_vertex: &mut ClickedVertex,
+) {
+    //draw water background
+    painter.image(
+        textures.water.id(),
+        board_rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+
+    let vertex_response = ui.allocate_rect(board_rect, egui::Sense::click());
+
+    //check which vertex is being hovered
+    let mut hovered_vertex: Option<usize> = None;
+    let mouse_pos = vertex_response.hover_pos();
+
+    if let Some(mouse_pos) = mouse_pos {
+        let radius = 10.0;
+        for vertex in &game.vertices {
+            let pos = screen(vertex.pos);
+            if mouse_pos.distance(pos) <= radius {
+                    hovered_vertex = Some(vertex.id);
+                    break;
+            }
+        }
     }
 
-    //draw roads (colored)
-    for player in &game.players {
-        let road_color = match player.id {
-            0 => egui::Color32::RED,
-            1 => egui::Color32::BLUE,
-            2 => egui::Color32::GREEN,
-            3 => egui::Color32::ORANGE,
-            _ => egui::Color32::WHITE,
-        };
-
-        for &(v1, v2) in &player.roads {
-            let pos1 = screen(game.vertices[v1].pos);
-            let pos2 = screen(game.vertices[v2].pos);
-
-            painter.line_segment(
-                [pos1, pos2],
-                egui::Stroke::new(4.0, road_color),
-            );
+    //find which tile (if any) is being hovered
+    let mut hovered_tile: Option<usize> = None;
+    
+    if hovered_vertex.is_none() {
+        if let Some(mouse_pos) = ui.ctx().pointer_hover_pos() {
+            for (i, tile) in game.tiles.iter().enumerate() {
+                let points: Vec<_> = tile.vertices.iter()
+                    .map(|&v| screen(game.vertices[v].pos))
+                    .collect();
+                let center = points.iter()
+                    .fold(egui::Vec2::ZERO, |acc, p| acc + p.to_vec2()) 
+                    / points.len() as f32;
+                let size = egui::vec2(110.0, 130.0);
+                let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
+                
+                if base_rect.contains(mouse_pos) {
+                    hovered_tile = Some(i);
+                    break; // Only hover ONE tile
+                }
+            }
         }
+    }
+
+    //draw tiles with hover info
+    for (i, tile) in game.tiles.iter().enumerate() {
+        draw_hex(ui, painter, tile, i, &game.vertices, screen, textures, hovered_tile == Some(i));
     }
 
     //draw vertices as clickable circles
@@ -89,74 +155,45 @@ pub fn draw_tiles(ui: &mut egui::Ui, game: &Game, clicked_vertex: &mut ClickedVe
         let radius = 10.0;
 
         //check if any player has a settlement or city here
-        let mut owner_id: Option<usize> = None;
-        let mut is_city = false;
+        let mut is_occupied = false;
 
         for player in &game.players {
-            
-            if player.cities.contains(&vertex.id) {
-                owner_id = Some(player.id);
-                is_city = true;
-                break;
-            }
-
-            if player.settlements.contains(&vertex.id) {
-                owner_id = Some(player.id);
+            if player.cities.contains(&vertex.id) || player.settlements.contains(&vertex.id) {
+                is_occupied = true;
                 break;
             }
         }
 
         //check if mouse is over this vertex
-        let is_hovered = response.hover_pos().map_or(false, |mouse_pos| {
-            mouse_pos.distance(pos) <= radius
-        });
+        let is_hovered = hovered_vertex == Some(vertex.id);
 
         //draw vertex circle (with player colors if owned)
-        let color = if let Some(player_id) = owner_id {
-            //different colors for each player
-            match player_id {
-                0 => egui::Color32::RED,
-                1 => egui::Color32::BLUE,
-                2 => egui::Color32::GREEN,
-                3 => egui::Color32::ORANGE,
-                _ => egui::Color32::WHITE,
-            }
-        } else if is_hovered {
+        let color = if is_hovered {
             egui::Color32::YELLOW
         } else {
             egui::Color32::WHITE
         };
 
-        //larger radius for cities
-        let actual_radius = if is_city {radius * 1.3} else {radius};
-
-        painter.circle_filled(pos, actual_radius, color);
-        painter.circle_stroke(pos, actual_radius, egui::Stroke::new(2.0, egui::Color32::BLACK));
-
-        //draw player number on settlement or city
-        if let Some(player_id) = owner_id {
-            painter.text(
-                pos,
-                egui::Align2::CENTER_CENTER,
-                (player_id + 1).to_string(),
-                egui::FontId::proportional(12.0),
-                egui::Color32::WHITE,
-            );
-        }
+        painter.circle_filled(pos, radius, color);
+        painter.circle_stroke(pos, radius, egui::Stroke::new(2.0, egui::Color32::BLACK));
 
         //handle click
-        if is_hovered && response.clicked() {
+        if hovered_vertex == Some(vertex.id) && vertex_response.clicked() {
             clicked_vertex.vertex_id = Some(vertex.id);
         }
     }
 }
 
-//draw a single hex-tile
-pub fn draw_hex(
+//draw a single hex-tile with texture
+fn draw_hex(
+    ui: &mut egui::Ui,
     painter: &egui::Painter,
     tile: &Tile,
+    index: usize,
     vertices: &[Vertex],
-    screen: impl Fn((f32, f32)) -> egui::Pos2, //convert game vertices to screen coords
+    screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+    textures: &TileTextures,
+    is_hovered: bool,
 ) {
     let points: Vec<_> = tile
         .vertices
@@ -164,26 +201,43 @@ pub fn draw_hex(
         .map(|&v| screen(vertices[v].pos)) //each vertex point -> screen
         .collect();
 
-    //draw the hex-tile as a convex polygon
-    painter.add(egui::Shape::convex_polygon(
-        points.clone(), //give the polygon its corners
-        tile_color(tile.resource),
-        egui::Stroke::new(2.0, egui::Color32::BLACK),
-    ));
+    let center = points
+        .iter()
+        .fold(egui::Vec2::ZERO, |acc, p| acc + p.to_vec2())
+        / points.len() as f32;
 
-    //also draw the number token on top of the tile
+    let size = egui::vec2(110.0, 130.0);
+    let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
+
+    let lift = if is_hovered {-10.0} else {0.0};
+    let shadow_offset = if is_hovered {10.0} else {5.0};
+
+    let tile_rect = base_rect.translate(egui::vec2(0.0, lift));
+
+    //draw shadow
+    painter.image(
+        tile_texture(textures, tile.resource).id(),
+        tile_rect.translate(egui::vec2(5.0, shadow_offset)),
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::from_black_alpha(100),
+    );
+
+    //draw tile texture
+    painter.image(
+        tile_texture(textures, tile.resource).id(),
+        tile_rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+
+    //draw number token
     if let Some(n) = tile.number_token {
-        //compute center of the hex -> average
-        let center =
-            points.iter().fold(egui::Vec2::ZERO, |a, b| a + b.to_vec2()) / points.len() as f32;
-
-        //draw the number token
         painter.text(
-            center.to_pos2(),
+            center.to_pos2() + egui::vec2(0.0, lift),
             egui::Align2::CENTER_CENTER,
             n.to_string(),
             egui::FontId::proportional(20.0),
-            egui::Color32::BLACK,
+            egui::Color32::from_hex("#22170c").unwrap(),
         );
     }
 }

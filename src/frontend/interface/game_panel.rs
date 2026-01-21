@@ -1,12 +1,17 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::backend::game::{Game, GamePhase, RoadBuildingMode};
 use crate::frontend::interface::style::apply_style;
-use crate::frontend::visual::tile::{ClickedVertex, TileShowing, draw_tiles};
+use crate::frontend::visual::{
+    cards::{CardsTextures, draw_cards},
+    road::{RoadTextures, draw_roads},
+    settlement::{SettlementTextures, draw_settlements},
+    city::{CityTextures, draw_cities},
+    tile::{TileTextures, TileShowing, ClickedVertex, draw_tiles},
+};
 
 //resource to track road building state
 #[derive(Resource, Default)]
@@ -20,7 +25,34 @@ pub fn setup_game(
     mut tiles_shown: ResMut<TileShowing>,
     mut clicked_vertex: ResMut<ClickedVertex>,
     mut road_state: ResMut<RoadBuildingState>,
+    tile_textures: Option<Res<TileTextures>>,
+    road_textures: Option<Res<RoadTextures>>,
+    card_textures: Option<Res<CardsTextures>>,
+    settlement_textures: Option<Res<SettlementTextures>>,
+    city_textures: Option<Res<CityTextures>>,
 ) {
+    //wait for textures to load
+    let Some(tile_textures) = tile_textures else { 
+        info!("Waiting for tile textures...");
+        return; 
+    };
+    let Some(road_textures) = road_textures else { 
+        info!("Waiting for road textures...");
+        return; 
+    };
+    let Some(card_textures) = card_textures else { 
+        info!("Waiting for card textures...");
+        return; 
+    };
+    let Some(settlement_textures) = settlement_textures else { 
+        info!("Waiting for settlement textures...");
+        return; 
+    };
+    let Some(city_textures) = city_textures else { 
+        info!("Waiting for city textures...");
+        return; 
+    };
+
     if let Ok(context) = context.ctx_mut() {
         //main game window
         apply_style(context);
@@ -36,37 +68,62 @@ pub fn setup_game(
             )
         };
 
-        
         //track button clicks
         let mut should_build_settlement = false;
         let mut should_build_road = false;
         let mut should_roll_dice = false;
         let mut should_end_turn = false;
 
-        egui::Window::new("Main Game")
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
-                    .corner_radius(egui::CornerRadius::same(15)),
-            )
+        egui::Window::new("Game Board")
+            .frame(egui::Frame::NONE)
             .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, (0.0, 0.0))
+            .movable(false)
             .collapsible(false)
-            .default_size((1500.0, 600.0))
+            .title_bar(false)
+            .fixed_pos(egui::Pos2::ZERO)
+            .fixed_size(context.available_rect().size())
+            .order(egui::Order::Background)
             .show(context, |ui| {
-                //hide and unhide tiles to test basic button behaviour
-                if ui
-                    .button(if tiles_shown.enabled {
-                        "Hide Tiles"
-                    } else {
-                        "Show Tiles"
-                    })
-                    .clicked()
-                {
-                    tiles_shown.enabled = !tiles_shown.enabled;
-                }
-                ui.separator();
-                
+                //size of the board area
+                let size = ui.available_size();
+                let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
+
+                let scale = 65.0;
+                let origin = response.rect.center();
+                let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
+
+                //draw everything
+                let game_borrow = game.borrow();
+                draw_tiles(
+                    ui,
+                    &painter,
+                    response.rect,
+                    &game_borrow,
+                    &tile_textures,
+                    &screen,
+                    clicked_vertex.as_mut(),
+                );
+                draw_roads(&painter, &game_borrow, &road_textures, &screen);
+                draw_settlements(&painter, &game_borrow, &settlement_textures, &screen);
+                draw_cities(&painter, &game_borrow, &city_textures, &screen);
+                draw_cards(
+                    &painter,
+                    &card_textures,
+                    egui::pos2(100.0, 100.0),
+                    egui::vec2(100.0, 130.0),
+                    10.0,
+                );
+                drop(game_borrow);
+            });
+
+        //control panel overlay
+        egui::Window::new("Controls")
+            .frame(egui::Frame::NONE)
+            .resizable(false)
+            .anchor(egui::Align2::LEFT_TOP, (10.0, 10.0))
+            .collapsible(false)
+            .default_size((300.0, 400.0))
+            .show(context, |ui| {
                 //show current game phase
                 ui.label(format!("Phase: {:?}", current_phase));
                 ui.label(format!("Current Player: {}", current_player_name));
@@ -79,8 +136,6 @@ pub fn setup_game(
                         //check what step of setup we are on
                         if setup_placement == 0 {
                             ui.label("Setup: Place your settlement");
-                        
-                        
                             if let Some(vertex_id) = clicked_vertex.vertex_id {
                                 ui.label(format!("Selected vertex: {}", vertex_id));
                                 if ui.button("Build Settlement").clicked() {
@@ -143,17 +198,9 @@ pub fn setup_game(
                         }
                     }
                 }
-                
-                ui.separator();
-                                
-                //draw tiles
-                if tiles_shown.enabled {
-                    let game = game.borrow();
-                    draw_tiles(ui, &game, clicked_vertex.as_mut());
-                }
             });
-        
-        //handle actions after thr UI is done
+
+        //handle actions after the UI is done
         if should_build_settlement {
             if let Some(vertex_id) = clicked_vertex.vertex_id {
                 let mut game = game.borrow_mut();

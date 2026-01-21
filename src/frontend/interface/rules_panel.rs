@@ -6,11 +6,8 @@ pub fn setup_rules(mut context: EguiContexts) {
         //rules window
         apply_style(context);
         egui::Window::new("Rules")
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
-                    .corner_radius(egui::CornerRadius::same(15)),
-            )
+            .frame(egui::Frame::NONE)
+            .order(egui::Order::Foreground) 
             .default_size((300.0, 200.0))
             .anchor(egui::Align2::RIGHT_BOTTOM, (0.0, 0.0))
             .default_open(false)
