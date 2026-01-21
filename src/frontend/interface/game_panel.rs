@@ -10,9 +10,8 @@ use crate::frontend::visual::{
     city::{CityTextures, draw_cities},
     road::{RoadTextures, draw_roads},
     settlement::{SettlementTextures, draw_settlements},
-    tile::{TileTextures, draw_tiles}
+    tile::{TileTextures, draw_tiles},
 };
-
 
 pub fn setup_game(
     mut context: EguiContexts,
@@ -24,30 +23,37 @@ pub fn setup_game(
     city_textures: Option<Res<CityTextures>>,
 ) {
     let game = &*game.borrow();
-    let Some(tile_textures) = tile_textures else { return; };
-    let Some(road_textures) = road_textures else { return; };
-    let Some(card_textures) = card_textures else { return; };
-    let Some(settlement_textures) = settlement_textures else { return; };
-    let Some(city_textures) = city_textures else { return; };
+    let Some(tile_textures) = tile_textures else {
+        return;
+    };
+    let Some(road_textures) = road_textures else {
+        return;
+    };
+    let Some(card_textures) = card_textures else {
+        return;
+    };
+    let Some(settlement_textures) = settlement_textures else {
+        return;
+    };
+    let Some(city_textures) = city_textures else {
+        return;
+    };
 
     if let Ok(context) = context.ctx_mut() {
         apply_style(context);
 
         egui::Window::new("")
-
             .frame(egui::Frame::NONE)
             .resizable(false)
             .collapsible(false)
             .title_bar(false)
             .collapsible(false)
             .default_size(context.available_rect().size())
-
             .show(context, |ui| {
-
-                //size of the space needed for the tile setup
+                //size of the space needed for the game setup
                 let size = ui.available_size();
 
-                //setup egui-painter, used to draw shapes and now textures
+                //setup egui-painter
                 let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
 
                 //scale factor for converting game coordinates to pixels
@@ -56,7 +62,7 @@ pub fn setup_game(
                 //center point of the display area for positioning the board
                 let origin = response.rect.center();
 
-                //conversion function from coordinates to pixel coordinates
+                //conversion from coordinates to pixel coordinates
                 let screen =
                     |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
 
@@ -70,7 +76,7 @@ pub fn setup_game(
                     10.0,
                 );
                 draw_settlements(&painter, &game.vertices, &settlement_textures, &screen);
-                draw_cities(&painter, &game.vertices, &city_textures, &screen);
+                //draw_cities(&painter, &game.vertices, &city_textures, &screen);
             });
     }
 }

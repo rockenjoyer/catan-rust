@@ -14,7 +14,6 @@ pub fn setup_rules(mut context: EguiContexts) {
             .anchor(egui::Align2::RIGHT_TOP, (0.0, 0.0))
             .default_open(false)
             .scroll(true)
-            
             .show(context, |ui| {
                 ui.separator();
                 ui.label(
@@ -67,6 +66,6 @@ pub fn setup_rules(mut context: EguiContexts) {
 
 fn rules_frame() -> egui::Frame {
     egui::Frame::new()
-        .fill(egui::Color32::from_hex("#d4c1b1bd").unwrap())
+        .fill(egui::Color32::from_hex("#623122bd").unwrap())
         .corner_radius(egui::CornerRadius::same(15))
 }

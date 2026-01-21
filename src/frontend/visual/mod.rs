@@ -1,3 +1,4 @@
+pub mod banner;
 pub mod cards;
 pub mod city;
 pub mod icons;

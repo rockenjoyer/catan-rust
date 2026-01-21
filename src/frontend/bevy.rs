@@ -1,12 +1,13 @@
 use bevy::prelude::*;
+use bevy::window::{Window, WindowMode};
 use bevy_egui::EguiPlugin;
 use bevy_kira_audio::prelude::*;
 
 use crate::frontend::interface::{
     game_panel, info_panel, rules_panel, settings_panel, volume_panel,
 };
-use crate::frontend::system::{camera, input};
-use crate::frontend::visual::{cards, city, road, settlement, tile};
+use crate::frontend::system::{audio, camera, input};
+use crate::frontend::visual::{banner, cards, city, icons, road, settlement, tile};
 
 pub struct FrontendPlugin;
 
@@ -14,6 +15,15 @@ impl Plugin for FrontendPlugin {
     fn build(&self, app: &mut App) {
         //install the egui plugin, register our startup and update systems
         app
+            //window configuration
+            .add_plugins(DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+                    title: "The Settlers of Catan - Rust Edition".to_string(),
+                    ..default()
+                }),
+                ..default()
+            }))
             //background-color
             .insert_resource(ClearColor(Color::WHITE))
             .add_plugins(EguiPlugin::default())
@@ -23,7 +33,7 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Startup,
                 (
-                    play_background_music,
+                    audio::play_background_music,
                     camera::setup_camera,
                     input::setup_cursor,
                 ),
@@ -32,6 +42,8 @@ impl Plugin for FrontendPlugin {
                 Update,
                 (
                     input::input_handling,
+                    banner::setup_banner_textures,
+                    icons::setup_icon_textures,
                     tile::setup_tile_textures,
                     road::setup_road_textures,
                     settlement::setup_settlement_textures,
@@ -51,11 +63,4 @@ impl Plugin for FrontendPlugin {
                 ),
             );
     }
-}
-
-//doens't work yet...
-fn play_background_music(asset_server: Res<AssetServer>, audio: Res<Audio>) {
-    //load the audio
-    let music = asset_server.load("audio/background_music.wav");
-    audio.play(music).looped().with_volume(0.5);
 }
