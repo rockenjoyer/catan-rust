@@ -95,7 +95,6 @@ pub fn draw_tiles(
     game: &Game,
     textures: &TileTextures,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
-    clicked_vertex: &mut ClickedVertex,
 ) {
     //draw water background
     painter.image(
@@ -147,7 +146,7 @@ pub fn draw_tiles(
 
     //draw tiles with hover info
     for (i, tile) in game.tiles.iter().enumerate() {
-        draw_hex(ui, painter, tile, i, &game.vertices, screen, textures, hovered_tile == Some(i));
+        draw_hex(painter, tile, &game.vertices, screen, textures, hovered_tile == Some(i));
     }
 }
 
@@ -236,10 +235,8 @@ pub fn draw_vertices(
 
 //draw a single hex-tile with texture
 fn draw_hex(
-    ui: &mut egui::Ui,
     painter: &egui::Painter,
     tile: &Tile,
-    index: usize,
     vertices: &[Vertex],
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     textures: &TileTextures,

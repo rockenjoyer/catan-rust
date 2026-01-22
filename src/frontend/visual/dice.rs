@@ -8,6 +8,7 @@ pub struct DiceRollState {
     pub current_display: (u8, u8),
     pub final_result: Option<(u8, u8)>,
     pub roll_duration: f32,
+    pub processed: bool,
 }
 
 impl Default for DiceRollState {
@@ -18,6 +19,7 @@ impl Default for DiceRollState {
             current_display: (1, 1),
             final_result: None,
             roll_duration: 1.0, //1 second animation
+            processed: false,
         }
     }
 }
@@ -28,6 +30,7 @@ impl DiceRollState {
         self.animation_timer = 0.0;
         self.final_result = Some(result);
         self.current_display = (1, 1);
+        self.processed = false;
     }
 
     pub fn update(&mut self, delta_time: f32) {
@@ -61,26 +64,12 @@ pub fn draw_die(
     pos: egui::Pos2,
     size: f32,
     value: u8,
-    rolling: bool,
 ) {
     let rect = egui::Rect::from_center_size(pos, egui::vec2(size, size));
-    
-    //wobble effect while rolling
-    let wobble = if rolling {
-        let wobble_amount = 5.0;
-        egui::vec2(
-            (pos.x * 0.1).sin() * wobble_amount,
-            (pos.y * 0.1).cos() * wobble_amount,
-        )
-    } else {
-        egui::vec2(0.0, 0.0)
-    };
-    
-    let wobbled_rect = rect.translate(wobble);
 
     //draw die body
     painter.rect(
-        wobbled_rect,
+        rect,
         2.0,
         egui::Color32::WHITE,
         egui::Stroke::new(3.0, egui::Color32::BLACK),
@@ -90,7 +79,7 @@ pub fn draw_die(
     //draw dots based on value
     let dot_size = size / 8.0;
     let spacing = size / 4.0;
-    let center = wobbled_rect.center();
+    let center = rect.center();
 
     let draw_dot = |x_offset: f32, y_offset: f32| {
         let dot_pos = egui::pos2(
@@ -153,7 +142,6 @@ pub fn draw_dice_roll(
         egui::pos2(center_pos.x - spacing / 2.0, center_pos.y),
         die_size,
         dice_state.current_display.0,
-        dice_state.rolling,
     );
 
     //draw right die
@@ -162,7 +150,6 @@ pub fn draw_dice_roll(
         egui::pos2(center_pos.x + spacing / 2.0, center_pos.y),
         die_size,
         dice_state.current_display.1,
-        dice_state.rolling,
     );
 
     //show total if not rolling

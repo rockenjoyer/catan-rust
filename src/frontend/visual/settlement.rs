@@ -1,4 +1,4 @@
-use crate::backend::game::{Game, Vertex};
+use crate::backend::game::{Game};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 

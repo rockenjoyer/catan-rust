@@ -5,12 +5,13 @@ use std::rc::Rc;
 
 use crate::backend::game::{Game, GamePhase, RoadBuildingMode, Resource as GameResource};
 use crate::frontend::interface::style::apply_style;
+use crate::frontend::interface::log_panel::GameLog;
 use crate::frontend::visual::{
     cards::{CardsTextures, draw_cards},
     road::{RoadTextures, draw_roads},
     settlement::{SettlementTextures, draw_settlements},
     city::{CityTextures, draw_cities},
-    tile::{TileTextures, TileShowing, ClickedVertex, draw_tiles, draw_vertices},
+    tile::{TileTextures, ClickedVertex, draw_tiles, draw_vertices},
     dice::{DiceRollState, draw_dice_roll},
 };
 
@@ -20,13 +21,24 @@ pub struct RoadBuildingState {
     pub last_two_vertices: Vec<usize>,
 }
 
+//resource to track building mode in normal play
+#[derive(Resource, Default, PartialEq, Clone)]
+pub enum BuildingMode {
+    #[default]
+    None,
+    BuildingRoad,
+    BuildingSettlement,
+    UpgradingCity,
+}
+
 pub fn setup_game(
     mut context: EguiContexts,
     game: NonSend<Rc<RefCell<Game>>>,
-    mut tiles_shown: ResMut<TileShowing>,
     mut clicked_vertex: ResMut<ClickedVertex>,
     mut road_state: ResMut<RoadBuildingState>,
     mut dice_state: ResMut<DiceRollState>,
+    mut building_mode: ResMut<BuildingMode>,
+    mut game_log: ResMut<GameLog>,
     tile_textures: Option<Res<TileTextures>>,
     road_textures: Option<Res<RoadTextures>>,
     card_textures: Option<Res<CardsTextures>>,
@@ -64,19 +76,35 @@ pub fn setup_game(
         dice_state.update(time.delta_secs());
 
         //read game state for UI display
-        let (current_phase, current_player_name, current_player_id, setup_placement) = {
+        let (current_phase, current_player_name, current_player_id, setup_placement, player_resources, player_settlements) = {
             let game = game.borrow();
+            let player = &game.players[game.current_player];
             (
                 game.game_phase,
-                game.players[game.current_player].name.clone(),
+                player.name.clone(),
                 game.current_player,
                 game.setup_placement,
+                player.resources.clone(),
+                player.settlements.clone(),
             )
         };
+
+        //check if player has enough resources
+        let has_road_resources = player_resources.get(&GameResource::Brick).unwrap_or(&0) >= &1
+            && player_resources.get(&GameResource::Lumber).unwrap_or(&0) >= &1;
+        
+        let has_settlement_resources = player_resources.get(&GameResource::Brick).unwrap_or(&0) >= &1
+            && player_resources.get(&GameResource::Lumber).unwrap_or(&0) >= &1
+            && player_resources.get(&GameResource::Wool).unwrap_or(&0) >= &1
+            && player_resources.get(&GameResource::Grain).unwrap_or(&0) >= &1;
+        
+        let has_city_resources = player_resources.get(&GameResource::Grain).unwrap_or(&0) >= &2
+            && player_resources.get(&GameResource::Ore).unwrap_or(&0) >= &3;
 
         //track button clicks
         let mut should_build_settlement = false;
         let mut should_build_road = false;
+        let mut should_build_city = false;
         let mut should_roll_dice = false;
         let mut should_end_turn = false;
 
@@ -109,7 +137,6 @@ pub fn setup_game(
                     &game_borrow,
                     &tile_textures,
                     &screen,
-                    clicked_vertex.as_mut(),
                 );
 
                 //layer 2 (roads)
@@ -123,16 +150,20 @@ pub fn setup_game(
                 draw_cities(&painter, &game_borrow, &city_textures, &screen);
                 
                 //layer 5 (cards)
+                 let cards_pos = egui::pos2(
+                    response.rect.right() - 500.0,
+                    response.rect.center().y + 200.0
+                );
                 draw_cards(
                     &painter,
                     &card_textures,
-                    egui::pos2(100.0, 100.0),
-                    egui::vec2(100.0, 130.0),
-                    10.0,
+                    cards_pos,
+                    egui::vec2(85.0, 100.0),
+                    6.0,
                 );
 
                 //layer 6 (dice)
-                if dice_state.rolling || dice_state.final_result.is_some() {
+                if dice_state.final_result.is_some() {
                     let dice_pos = egui::pos2(response.rect.right() - 150.0, response.rect.top() + 100.0);
                     draw_dice_roll(&painter, dice_pos, &dice_state);
                 }
@@ -151,7 +182,19 @@ pub fn setup_game(
             .show(context, |ui| {
                 //show current game phase
                 ui.label(format!("Phase: {:?}", current_phase));
-                ui.label(format!("Current Player: {}", current_player_name));
+                
+                //show current player name with their color
+                let player_color = match current_player_id {
+                    0 => egui::Color32::from_rgb(200, 50, 50),   // Red
+                    1 => egui::Color32::from_rgb(50, 100, 200),  // Blue
+                    2 => egui::Color32::from_rgb(50, 200, 50),   // Green
+                    3 => egui::Color32::from_rgb(220, 200, 50),  // Yellow
+                    _ => egui::Color32::WHITE,
+                };
+                ui.horizontal(|ui| {
+                    ui.label("Current Player: ");
+                    ui.colored_label(player_color, &current_player_name);
+                });
 
                 ui.separator();
 
@@ -188,7 +231,7 @@ pub fn setup_game(
                                 ui.label(format!("Selected: {}", road_state.last_two_vertices[0]));
                                 ui.label("Click another vertex");
                             } else if road_state.last_two_vertices.len() == 2 {
-                                ui.label(format!("Road: {} → {}", 
+                                ui.label(format!("Road: {} -> {}", 
                                     road_state.last_two_vertices[0], 
                                     road_state.last_two_vertices[1]));
                                 
@@ -206,25 +249,136 @@ pub fn setup_game(
                     }
                     GamePhase::NormalPlay => {
                         ui.label("Normal Play");
+                        ui.separator();
 
-                        if !dice_state.rolling {
+                        if !dice_state.rolling && !dice_state.processed {
                             if ui.button("Roll Dice").clicked() {
                                 should_roll_dice = true;
                             }
-                        } else {
+                        } else if dice_state.rolling {
                             ui.label("Rolling...");
+                        } else {
+                            ui.label("Dice rolled!");
                         }
 
-                        if let Some(vertex_id) = clicked_vertex.vertex_id {
-                            ui.label(format!("Selected vertex: {}", vertex_id));
+                        ui.separator();
+                        ui.label("Build Actions:");
 
-                            if ui.button(format!("Build settlement at vertex {}", vertex_id)).clicked() {
-                                should_build_settlement = true;
+                        //building buttons based on current mode
+                        match building_mode.as_ref() {
+                            BuildingMode::None => {
+                                //show all available building options
+                                if has_road_resources {
+                                    if ui.button("Build Road (Brick + Lumber)").clicked() {
+                                        *building_mode = BuildingMode::BuildingRoad;
+                                        road_state.last_two_vertices.clear();
+                                        game_log.add_info(format!("Road building mode activated"), time.elapsed_secs());
+                                    }
+                                } else {
+                                    ui.add_enabled(false, egui::Button::new("Build Road (Need: Brick + Lumber)"));
+                                }
+
+                                if has_settlement_resources {
+                                    if ui.button("Build Settlement (Brick + Lumber + Wool + Grain)").clicked() {
+                                        *building_mode = BuildingMode::BuildingSettlement;
+                                        game_log.add_info(format!("Settlement building mode activated"), time.elapsed_secs());
+                                    }
+                                } else {
+                                    ui.add_enabled(false, egui::Button::new("Build Settlement (Need: Brick + Lumber + Wool + Grain)"));
+                                }
+
+                                if has_city_resources {
+                                    if ui.button("Upgrade to City (2 Grain + 3 Ore)").clicked() {
+                                        *building_mode = BuildingMode::UpgradingCity;
+                                        game_log.add_info(format!("City upgrade mode activated"), time.elapsed_secs());
+                                    }
+                                } else {
+                                    ui.add_enabled(false, egui::Button::new("Upgrade to City (Need: 2 Grain + 3 Ore)"));
+                                }
+                            }
+                            BuildingMode::BuildingRoad => {
+                                ui.colored_label(egui::Color32::YELLOW, "Building Road Mode");
+                                
+                                // Track clicked vertices
+                                if let Some(vertex_id) = clicked_vertex.vertex_id {
+                                    road_state.last_two_vertices.push(vertex_id);
+                                    if road_state.last_two_vertices.len() > 2 {
+                                        road_state.last_two_vertices.remove(0);
+                                    }
+                                    clicked_vertex.vertex_id = None;
+                                }
+
+                                if road_state.last_two_vertices.len() == 1 {
+                                    ui.label(format!("First vertex: {}", road_state.last_two_vertices[0]));
+                                    ui.label("Click second vertex");
+                                } else if road_state.last_two_vertices.len() == 2 {
+                                    ui.label(format!("Road: {} → {}", 
+                                        road_state.last_two_vertices[0], 
+                                        road_state.last_two_vertices[1]));
+                                    
+                                    if ui.button("Confirm Build Road").clicked() {
+                                        should_build_road = true;
+                                    }
+                                } else {
+                                    ui.label("Click first vertex");
+                                }
+
+                                if ui.button("Cancel").clicked() {
+                                    *building_mode = BuildingMode::None;
+                                    road_state.last_two_vertices.clear();
+                                }
+                            }
+                            BuildingMode::BuildingSettlement => {
+                                ui.colored_label(egui::Color32::YELLOW, "Building Settlement Mode");
+                                
+                                if let Some(vertex_id) = clicked_vertex.vertex_id {
+                                    ui.label(format!("Selected vertex: {}", vertex_id));
+                                    
+                                    if ui.button("Confirm Build Settlement").clicked() {
+                                        should_build_settlement = true;
+                                    }
+                                } else {
+                                    ui.label("Click a vertex to build settlement");
+                                }
+
+                                if ui.button("Cancel").clicked() {
+                                    *building_mode = BuildingMode::None;
+                                    clicked_vertex.vertex_id = None;
+                                }
+                            }
+                            BuildingMode::UpgradingCity => {
+                                ui.colored_label(egui::Color32::YELLOW, "Upgrade to City Mode");
+                                
+                                if let Some(vertex_id) = clicked_vertex.vertex_id {
+                                    //check if this vertex has a settlement owned by the current player
+                                    if player_settlements.contains(&vertex_id) {
+                                        ui.label(format!("Selected settlement at vertex: {}", vertex_id));
+                                        
+                                        if ui.button("Confirm Upgrade to City").clicked() {
+                                            should_build_city = true;
+                                        }
+                                    } else {
+                                        ui.colored_label(egui::Color32::RED, "No settlement here or not yours!");
+                                    }
+                                } else {
+                                    ui.label("Click on one of your settlements");
+                                }
+
+                                if ui.button("Cancel").clicked() {
+                                    *building_mode = BuildingMode::None;
+                                    clicked_vertex.vertex_id = None;
+                                }
                             }
                         }
 
-                        if ui.button("End Turn").clicked() {
-                            should_end_turn = true;
+                        ui.separator();
+
+                        if dice_state.processed {
+                            if ui.button("End Turn").clicked() {
+                                should_end_turn = true;
+                            }
+                        } else {
+                            ui.add_enabled(false, egui::Button::new("End Turn (Roll dice first!)"));
                         }
                     }
                 }
@@ -236,14 +390,12 @@ pub fn setup_game(
                 let mut game = game.borrow_mut();
                 match game.build_settlement(current_player_id, vertex_id) {
                     Ok(_) => {
-                        info!("Settlement built successfully!");
-
-                        info!("Setup placement is now: {}", game.setup_placement);
-
+                        game_log.add_info(format!("Settlement built successfully!"), time.elapsed_secs());
                         clicked_vertex.vertex_id = None;
+                        *building_mode = BuildingMode::None;
                     }
                     Err(e) => {
-                        warn!("Failed to build settlement: {}", e);
+                        game_log.add_warn(format!("Failed to build settlement: {}", e), time.elapsed_secs());
                     }
                 }
             }
@@ -257,18 +409,32 @@ pub fn setup_game(
 
                 let mut game = game.borrow_mut();
 
-                info!("Attempting to build road between {} and {}", first, second);
-
                 match game.build_road(current_player_id, first, second, RoadBuildingMode::Normal) {
                     Ok(_) => {
-                        info!("Road built! Setup placement now: {}", game.setup_placement);
-                        info!("Current player now: {}", game.current_player);
+                        game_log.add_info(format!("Road built between {} and {}", first, second), time.elapsed_secs());
                         road_state.last_two_vertices.clear();
                         clicked_vertex.selected_vertex = None;
+                        *building_mode = BuildingMode::None;
                     }
                     Err(e) => {
-                        warn!("Failed to build road: {}", e);
+                        game_log.add_warn(format!("Failed to build road: {}", e), time.elapsed_secs());
                         road_state.last_two_vertices.clear();
+                    }
+                }
+            }
+        }
+
+        if should_build_city {
+            if let Some(vertex_id) = clicked_vertex.vertex_id {
+                let mut game = game.borrow_mut();
+                match game.build_city(current_player_id, vertex_id) {
+                    Ok(_) => {
+                        game_log.add_info(format!("Settlement upgraded to city!"), time.elapsed_secs());
+                        clicked_vertex.vertex_id = None;
+                        *building_mode = BuildingMode::None;
+                    }
+                    Err(e) => {
+                        game_log.add_warn(format!("Failed to upgrade to city: {}", e), time.elapsed_secs());
                     }
                 }
             }
@@ -281,21 +447,20 @@ pub fn setup_game(
             let die1 = rng.random_range(1..=6);
             let die2 = rng.random_range(1..=6);
             dice_state.start_roll((die1, die2));
-            info!("Starting roll animation: {} + {} = {}", die1, die2, die1 + die2);
         }
 
-        //process the roll only when the animation finishes
-        if !dice_state.rolling && dice_state.final_result.is_some() {
+        //process the roll only when the animation finishes and hasnt been processed yet
+        if !dice_state.rolling && dice_state.final_result.is_some() && !dice_state.processed {
             if let Some((d1, d2)) = dice_state.final_result {
                 let total = d1 + d2;
                 let mut game = game.borrow_mut();
                 
-                // Distribute resources/handle robber based on the roll
+                //distribute resources/handle robber based on the roll
                 if total == 7 {
                     // Placeholder - implement robbery and robber movement in UI later
-                    info!("Rolled 7 - robber activates!");
+                    game_log.add_info(format!("Rolled 7 - robber activates!"), time.elapsed_secs());
                 } else {
-                    // Collect resource updates first
+                    //collect resource updates first
                     let mut updates: Vec<(usize, GameResource, u8)> = Vec::new();
                     
                     for (tile_idx, tile) in game.tiles.iter().enumerate() {
@@ -313,21 +478,26 @@ pub fn setup_game(
                         }
                     }
                     
-                    // Apply updates
+                    //apply updates
                     for (player_idx, resource, amount) in updates {
                         *game.players[player_idx].resources.entry(resource).or_insert(0) += amount;
                     }
                 }
                 
-                info!("Roll completed: {}", total);
-                dice_state.final_result = None; // Clear so we don't process again
+                game_log.add_info(format!("Roll completed: {}", total), time.elapsed_secs());
+                dice_state.processed = true; //mark as processed but keep dice visible
             }
         }
 
         if should_end_turn {
             let mut game = game.borrow_mut();
             game.next_turn();
-            info!("Turn ended");
+            game_log.add_info(format!("Turn ended"), time.elapsed_secs());
+            *building_mode = BuildingMode::None; //reset building mode on turn end
+
+            //reset dice for next turn
+            dice_state.final_result = None;
+            dice_state.processed = false;
         }
     }
 }

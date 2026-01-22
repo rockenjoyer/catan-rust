@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 
 use crate::frontend::interface::{
-    game_panel, info_panel, rules_panel, settings_panel, volume_panel,
+    game_panel, info_panel, rules_panel, settings_panel, volume_panel, log_panel,
 };
 use crate::frontend::system::{camera, input};
 use crate::frontend::visual::{tile, road, cards, settlement, city, dice};
@@ -27,7 +27,9 @@ impl Plugin for FrontendPlugin {
             .insert_resource(tile::TileShowing::default())
             .insert_resource(tile::ClickedVertex::default())
             .insert_resource(game_panel::RoadBuildingState::default())
+            .insert_resource(game_panel::BuildingMode::default())
             .insert_resource(dice::DiceRollState::default())
+            .insert_resource(log_panel::GameLog::default())
             
             //egui pass: texture loading and UI systems
             .add_systems(
@@ -46,6 +48,7 @@ impl Plugin for FrontendPlugin {
                     rules_panel::setup_rules,
                     settings_panel::setup_settings,
                     volume_panel::setup_volume,
+                    log_panel::setup_log_panel,
                 ),
             );
     }
