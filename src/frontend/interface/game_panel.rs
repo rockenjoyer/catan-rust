@@ -135,19 +135,19 @@ pub fn setup_game(
                     &painter,
                     response.rect,
                     &game_borrow,
-                    &tile_textures,
+                    &*tile_textures,
                     &screen,
                 );
 
                 //layer 2 (roads)
-                draw_roads(&painter, &game_borrow, &road_textures, &screen);
+                draw_roads(&painter, &game_borrow, &*road_textures, &screen);
 
                 //layer 3 (vertices)
                 draw_vertices(ui, &painter, response.rect, &game_borrow, &screen, clicked_vertex.as_mut());
 
                 //layer 4 (settlements and cities)
-                draw_settlements(&painter, &game_borrow, &settlement_textures, &screen);
-                draw_cities(&painter, &game_borrow, &city_textures, &screen);
+                draw_settlements(&painter, &game_borrow, &*settlement_textures, &screen);
+                draw_cities(&painter, &game_borrow, &*city_textures, &screen);
                 
                 //layer 5 (cards)
                  let cards_pos = egui::pos2(
@@ -156,7 +156,7 @@ pub fn setup_game(
                 );
                 draw_cards(
                     &painter,
-                    &card_textures,
+                    &*card_textures,
                     cards_pos,
                     egui::vec2(85.0, 100.0),
                     6.0,
@@ -165,7 +165,7 @@ pub fn setup_game(
                 //layer 6 (dice)
                 if dice_state.final_result.is_some() {
                     let dice_pos = egui::pos2(response.rect.right() - 150.0, response.rect.top() + 100.0);
-                    draw_dice_roll(&painter, dice_pos, &dice_state);
+                    draw_dice_roll(&painter, dice_pos, &*dice_state);
                 }
 
                 drop(game_borrow);
@@ -185,10 +185,10 @@ pub fn setup_game(
                 
                 //show current player name with their color
                 let player_color = match current_player_id {
-                    0 => egui::Color32::from_rgb(200, 50, 50),   // Red
-                    1 => egui::Color32::from_rgb(50, 100, 200),  // Blue
-                    2 => egui::Color32::from_rgb(50, 200, 50),   // Green
-                    3 => egui::Color32::from_rgb(220, 200, 50),  // Yellow
+                    0 => egui::Color32::from_rgb(200, 50, 50),   //red
+                    1 => egui::Color32::from_rgb(50, 100, 200),  //blue
+                    2 => egui::Color32::from_rgb(50, 200, 50),   //green
+                    3 => egui::Color32::from_rgb(220, 200, 50),  //yellow
                     _ => egui::Color32::WHITE,
                 };
                 ui.horizontal(|ui| {
