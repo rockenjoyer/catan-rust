@@ -1,9 +1,14 @@
+use crate::backend::game::Game;
 use crate::frontend::interface::style::apply_style;
 use crate::frontend::visual::banner::{BannerTextures, draw_viewer_banner_background};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-pub fn setup_info(mut context: EguiContexts, textures: Option<Res<BannerTextures>>) {
+pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>, textures: Option<Res<BannerTextures>>) {
+    let game = game.borrow();
+
     if let Ok(context) = context.ctx_mut() {
         apply_style(context);
 
@@ -48,17 +53,26 @@ pub fn setup_info(mut context: EguiContexts, textures: Option<Res<BannerTextures
             .anchor(egui::Align2::CENTER_BOTTOM, (0.0, 0.0))
             .default_size(default_size)
             .show(context, |ui| {
-                if let Some(texture) = viewer_banner {
-                    draw_viewer_banner_background(ui, texture);
-                }
-                ui.vertical_centered(|ui| {
-                    ui.add_space(10.0);
-                    ui.heading("Current Round Info");
-                    ui.add_space(5.0);
-                    ui.label(format!("Current Player: "));
-                    ui.label(format!("Resources: "));
+                let current = &game.players[game.current_player];
+
+                ui.label(format!("Current Player: {} (VP: {})", current.name, current.victory_points));
+
+                ui.label(format!("Resources: "));
+                ui.horizontal(|ui| {
+                    for (resource, &amount) in &current.resources {
+                        if amount > 0 {
+                            ui.label(format!("{:?}: {}", resource, amount));
+                        }
+                    }
                 });
-                //TO-DO: more info to be added later
+
+                ui.separator();
+
+                ui.label(format!("Settlements: {} | Cities: {} | Roads: {}",
+                    current.settlements.len(),
+                    current.cities.len(),
+                    current.roads.len()
+                ));
             });
     }
 }

@@ -4,22 +4,19 @@ use bevy_egui::EguiPlugin;
 use bevy_kira_audio::prelude::*;
 
 use crate::frontend::interface::{
-    game_panel, info_panel, rules_panel, settings_panel, volume_panel,
+    game_panel, info_panel, rules_panel, settings_panel, volume_panel, log_panel,
 };
-use crate::frontend::system::{audio, camera, input};
-use crate::frontend::visual::{banner, cards, city, icons, road, settlement, tile};
-
+use crate::frontend::system::{audio, camera};
+use crate::frontend::visual::{banner, cards, city, icons, road, settlement, tile, dice};
 pub struct FrontendPlugin;
 
 impl Plugin for FrontendPlugin {
     fn build(&self, app: &mut App) {
-        //install the egui plugin, register our startup and update systems
         app
             //window configuration
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
-                    title: "The Settlers of Catan - Rust Edition".to_string(),
                     ..default()
                 }),
                 ..default()
@@ -35,32 +32,39 @@ impl Plugin for FrontendPlugin {
                 (
                     audio::play_background_music,
                     camera::setup_camera,
-                    input::setup_cursor,
                 ),
             )
-            .add_systems(
-                Update,
-                (
-                    input::input_handling,
-                    banner::setup_banner_textures,
-                    icons::setup_icon_textures,
-                    tile::setup_tile_textures,
-                    road::setup_road_textures,
-                    settlement::setup_settlement_textures,
-                    city::setup_city_textures,
-                    cards::setup_cards_textures,
-                ),
-            )
-            //egui pass: egui-context-related systems
+            //resources for game state
+            .insert_resource(tile::TileShowing::default())
+            .insert_resource(tile::ClickedVertex::default())
+            .insert_resource(game_panel::RoadBuildingState::default())
+            .insert_resource(game_panel::BuildingMode::default())
+            .insert_resource(dice::DiceRollState::default())
+            .insert_resource(log_panel::GameLog::default())
+            
+            //egui pass: texture loading and UI systems
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
                 (
+                    //texture loaders (run first)
+                    tile::setup_tile_textures,
+                    road::setup_road_textures,
+                    cards::setup_cards_textures,
+                    settlement::setup_settlement_textures,
+                    city::setup_city_textures,
+                    banner::setup_banner_textures,
+                    icons::setup_icon_textures,
+                    
+                    //UI panels (run after textures loaded)
                     info_panel::setup_info,
                     rules_panel::setup_rules,
                     settings_panel::setup_settings,
                     volume_panel::setup_volume,
-                    game_panel::setup_game,
+                    log_panel::setup_log_panel,
                 ),
             );
     }
+}
+fn change_title(mut window: Single<&mut Window>) {
+    window.title = format!("The Settlers of Catan - Rust Edition");
 }

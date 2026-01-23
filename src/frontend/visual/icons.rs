@@ -15,14 +15,32 @@ pub struct SettingsWindowState {
     pub open: bool,
 }
 
+impl Default for SettingsWindowState {
+    fn default() -> Self {
+        SettingsWindowState { open: false }
+    }
+}
+
 #[derive(Resource)]
 pub struct RulesWindowState {
     pub open: bool,
 }
 
+impl Default for RulesWindowState {
+    fn default() -> Self {
+        RulesWindowState { open: false }
+    }
+}
+
 #[derive(Resource)]
 pub struct VolumeWindowState {
     pub open: bool,
+}
+
+impl Default for VolumeWindowState {
+    fn default() -> Self {
+        VolumeWindowState { open: false }
+    }
 }
 
 //load the icon textures into egui

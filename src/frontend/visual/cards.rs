@@ -94,7 +94,6 @@ pub fn load_cards_textures(ctx: &egui::Context) -> CardsTextures {
 }
 
 //retrieve the texture handle for a given resource type
-
 pub fn resource_texture<'a>(
     textures: &'a CardsTextures,
     resource: Resource,

@@ -10,16 +10,6 @@ pub struct TileTextures {
     pub land: HashMap<Resource, egui::TextureHandle>,
     pub water: egui::TextureHandle,
 }
-//resource to track whether tile visuals are shown or not
-#[derive(Resource)]
-pub struct TileShowing {
-    pub enabled: bool,
-}
-#[derive(Component)]
-pub struct TileVisual {
-    //whether the tile is highlighted (e.g. hover or selection)
-    pub highlighted: bool,
-}
 
 #[derive(Clone, Copy)]
 pub struct WaterTile {
@@ -41,16 +31,41 @@ pub fn setup_tile_textures(
     }
 }
 
+//track what was clicked
+#[derive(Resource, Default)]
+pub struct ClickedVertex {
+    pub vertex_id: Option<usize>,
+    pub selected_vertex: Option<usize>, //keeps glowing untill clicked off
+}
+
+#[derive(Component)]
+pub struct TileVisual {
+    pub highlighted: bool,
+}
+
+//load the tile textures into egui
+pub fn setup_tile_textures(
+    mut commands: Commands,
+    mut contexts: EguiContexts,
+    textures: Option<Res<TileTextures>>,
+) {
+    if textures.is_some() {
+        return;
+    }
+    if let Ok(ctx) = contexts.ctx_mut() {
+        commands.insert_resource(load_tile_textures(ctx));
+        info!("Tile textures loaded successfully!");
+    }
+}
+
 pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
     let mut land = HashMap::new();
 
-    //load an image file and convert it to an egui texture, specifically rgba8 format
     let load = |path: &str| {
         let img = image::open(path)
             .unwrap_or_else(|_| panic!("Failed to load tile image: {path}"))
             .to_rgba8();
 
-        //convert the previous image data to egui texture
         ctx.load_texture(
             path.to_string(),
             egui::ColorImage::from_rgba_unmultiplied(
@@ -61,7 +76,6 @@ pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
         )
     };
 
-    //load texture for each resource type from the assets and insert into the hashmap
     land.insert(Brick, load("assets/tiles/brick.png"));
     land.insert(Lumber, load("assets/tiles/lumber.png"));
     land.insert(Wool, load("assets/tiles/wool.png"));
@@ -69,13 +83,11 @@ pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
     land.insert(Ore, load("assets/tiles/ore.png"));
     land.insert(Desert, load("assets/tiles/desert.png"));
 
-    //load the water texture separately
     let water = load("assets/tiles/water_background.png");
 
     TileTextures { land, water }
 }
 
-//retrieve the texture handle for a given resource type
 pub fn tile_texture<'a>(textures: &'a TileTextures, resource: Resource) -> &'a egui::TextureHandle {
     textures
         .land
@@ -83,7 +95,7 @@ pub fn tile_texture<'a>(textures: &'a TileTextures, resource: Resource) -> &'a e
         .expect("The land tile texture is missing!")
 }
 
-//draw all the tiles in the game
+//draw all the tiles with click detection for vertices
 pub fn draw_tiles(
     ui: &mut egui::Ui,
     painter: &egui::Painter,
@@ -92,7 +104,7 @@ pub fn draw_tiles(
     textures: &TileTextures,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
 ) {
-    //draw water FIRST! as the background
+    //draw water background
     painter.image(
         textures.water.id(),
         board_rect,
@@ -100,21 +112,144 @@ pub fn draw_tiles(
         egui::Color32::WHITE,
     );
 
-    //draw the land tile on top of the water background
+    let vertex_response = ui.allocate_rect(board_rect, egui::Sense::click());
+
+    //check which vertex is being hovered
+    let mut hovered_vertex: Option<usize> = None;
+    let mouse_pos = vertex_response.hover_pos();
+
+    if let Some(mouse_pos) = mouse_pos {
+        let radius = 10.0;
+        for vertex in &game.vertices {
+            let pos = screen(vertex.pos);
+            if mouse_pos.distance(pos) <= radius {
+                hovered_vertex = Some(vertex.id);
+                break;
+            }
+        }
+    }
+
+    //find which tile (if any) is being hovered
+    let mut hovered_tile: Option<usize> = None;
+    
+    if hovered_vertex.is_none() {
+        if let Some(mouse_pos) = ui.ctx().pointer_hover_pos() {
+            for (i, tile) in game.tiles.iter().enumerate() {
+                let points: Vec<_> = tile.vertices.iter()
+                    .map(|&v| screen(game.vertices[v].pos))
+                    .collect();
+                let center = points.iter()
+                    .fold(egui::Vec2::ZERO, |acc, p| acc + p.to_vec2()) 
+                    / points.len() as f32;
+                let size = egui::vec2(110.0, 130.0);
+                let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
+                
+                if base_rect.contains(mouse_pos) {
+                    hovered_tile = Some(i);
+                    break; //only hover one tile
+                }
+            }
+        }
+    }
+
+    //draw tiles with hover info
     for (i, tile) in game.tiles.iter().enumerate() {
-        draw_hex(ui, painter, tile, i, &game.vertices, screen, textures);
+        draw_hex(painter, tile, &game.vertices, screen, textures, hovered_tile == Some(i));
     }
 }
 
-//draw a single land hex-tile with its texture
-pub fn draw_hex(
+//draw vertices as clickable circles (called separately to control layer order)
+pub fn draw_vertices(
     ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    board_rect: egui::Rect,
+    game: &Game,
+    screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+    clicked_vertex: &mut ClickedVertex,
+) {
+    let vertex_response = ui.allocate_rect(board_rect, egui::Sense::click());
+
+    //check which vertex is being hovered
+    let mut hovered_vertex: Option<usize> = None;
+    let mouse_pos = vertex_response.hover_pos();
+
+    if let Some(mouse_pos) = mouse_pos {
+        let radius = 10.0;
+        for vertex in &game.vertices {
+            let pos = screen(vertex.pos);
+            if mouse_pos.distance(pos) <= radius {
+                hovered_vertex = Some(vertex.id);
+                break;
+            }
+        }
+    }
+
+    //draw vertices as clickable circles (only empty vertices)
+
+    for vertex in &game.vertices {
+        let pos = screen(vertex.pos);
+        let radius = 10.0;
+
+        //check if any player has a settlement or city here
+        let mut is_occupied = false;
+
+        for player in &game.players {
+            if player.cities.contains(&vertex.id) || player.settlements.contains(&vertex.id) {
+                is_occupied = true;
+                break;
+            }
+        }
+
+        //only draw circle if vertex is empty
+        if !is_occupied {
+            //check if mouse is over this vertex or if it is the selected vertex
+            let is_hovered = hovered_vertex == Some(vertex.id);
+            let is_selected = clicked_vertex.selected_vertex == Some(vertex.id);
+
+            let color = if is_hovered || is_selected {
+                egui::Color32::YELLOW
+            } else {
+                egui::Color32::WHITE
+            };
+
+            painter.circle_filled(pos, radius, color);
+            painter.circle_stroke(pos, radius, egui::Stroke::new(2.0, egui::Color32::BLACK));
+        
+            //draw vertex ID on top
+            painter.text(
+                pos,
+                egui::Align2::CENTER_CENTER,
+                vertex.id.to_string(),
+                egui::FontId::proportional(14.0),
+                egui::Color32::BLACK,
+            );
+        }
+
+        //handle click
+        if vertex_response.clicked() {
+            if let Some(mouse_pos) = vertex_response.interact_pointer_pos() {
+                // Check if clicked on a vertex
+                if mouse_pos.distance(pos) <= radius {
+                    clicked_vertex.vertex_id = Some(vertex.id);
+                    clicked_vertex.selected_vertex = Some(vertex.id);
+                } else if hovered_vertex.is_none() {
+                    // Clicked elsewhere (not on any vertex) - deselect
+                    clicked_vertex.selected_vertex = None;
+                }
+            }
+        }
+    }
+}
+
+//draw a single hex-tile with texture
+fn draw_hex(
     painter: &egui::Painter,
     tile: &Tile,
     index: usize,
     vertices: &[Vertex],
-    screen: impl Fn((f32, f32)) -> egui::Pos2, //convert game vertices to screen coords
+    screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     textures: &TileTextures,
+    is_hovered: bool,
 ) {
     //convert all of the hex vertices from game coords to pixel coords
     let points: Vec<_> = tile
@@ -123,26 +258,20 @@ pub fn draw_hex(
         .map(|&v| screen(vertices[v].pos))
         .collect();
 
-    //calculate the center point of the hexagon
     let center = points
         .iter()
         .fold(egui::Vec2::ZERO, |acc, p| acc + p.to_vec2())
         / points.len() as f32;
 
-    //the size of the texture rectangle that is to be drawn
     let size = egui::vec2(110.0, 130.0);
     let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
 
-    //hover detection
-    let id = egui::Id::new(("tile", index));
-    let hovered = ui.interact(base_rect, id, egui::Sense::hover()).hovered();
+    let lift = if is_hovered {-10.0} else {0.0};
+    let shadow_offset = if is_hovered {10.0} else {5.0};
 
-    //elevation and shadow of the hovered tile
-    let lift = if hovered { -10.0 } else { 0.0 };
-    let shadow_offset = if hovered { 10.0 } else { 5.0 };
     let tile_rect = base_rect.translate(egui::vec2(0.0, lift));
 
-    //draw a shadow underneath the tile
+    //draw shadow
     painter.image(
         tile_texture(textures, tile.resource).id(),
         tile_rect.translate(egui::vec2(5.0, shadow_offset)),
@@ -150,7 +279,7 @@ pub fn draw_hex(
         egui::Color32::from_black_alpha(100),
     );
 
-    //draw the resource tile texture at the center position
+    //draw tile texture
     painter.image(
         tile_texture(textures, tile.resource).id(),
         tile_rect,
@@ -158,8 +287,7 @@ pub fn draw_hex(
         egui::Color32::WHITE,
     );
 
-    //draw the number token on top of the tile, if it exits (not desert)
-    //also with a shadow and lifted if hovered
+    //draw number token
     if let Some(n) = tile.number_token {
         painter.text(
             center.to_pos2() + egui::vec2(0.0, lift),
