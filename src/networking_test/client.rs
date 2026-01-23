@@ -1,18 +1,22 @@
-use std::collections::HashMap;
-use bevy_quinnet::client::{QuinnetClient, ConnectionClosed};
+use bevy_quinnet::server::endpoint::Endpoint;
+use bevy_quinnet::shared::ClientId;
+use bevy_quinnet::shared::channels::ChannelId;
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
-use crate::networking::protocol::*;
+use crate::networking_test::{protocol::*, transport::ClientTransport};
+use bevy_quinnet::client::{ConnectionClosed, QuinnetClient, connection};
 
-pub fn run_client(client: &mut QuinnetClient) {
+use crate::networking_test::transport::*;
+
+pub fn run_client(mut client: QuinnetClient) {
     let mut assigned_player: Option<u8> = None;
     let mut client_connection = client.connection_mut();
-    let mut users: HashMap<u8, String> = HashMap::new();
 
+    // Channel for stdin input
     let (input_tx, input_rx) = std::sync::mpsc::channel::<String>();
 
-    println!("Client started. Type 'do' to perform an action, 'quit' to exit. \n\n--Anything else will be sent as a message to other clients in the chat--");
-    /*std::thread::spawn(move || loop {
+    // Spawn input thread
+    std::thread::spawn(move || loop {
         print!("> ");
         io::stdout().flush().unwrap();
         let mut input = String::new();
@@ -22,58 +26,46 @@ pub fn run_client(client: &mut QuinnetClient) {
                 let _ = input_tx.send(input);
             }
         }
-    });*/
+    });
+
 
     loop {
-        if let Some(payload_bytes) = client_connection.receive_payload(1).ok().flatten() {
+        while let Some(payload_bytes) = client_connection.receive_payload(1).ok().flatten() {
             match bincode::deserialize::<ServerMessage>(&payload_bytes) {
                 Ok(msg) => {
                     match msg {
                         ServerMessage::Confirmation { player } => {
                             assigned_player = Some(player);
-                            users.insert(player, format!("Player {}", player));
                             println!("You are Player {}", player);
-                        },
+                        }
+
                         ServerMessage::GameStart => {
+                            //game_started = true;
                             println!("Game started");
-                        },
+                        }
+
                         ServerMessage::Turn { player } => {
                             if Some(player) == assigned_player {
                                 println!("Your turn");
+                                //is_my_turn = true;
                             } else {
                                 println!("Player {}'s turn", player);
+                                //is_my_turn = false;
                             }
-                        },
+                        }
+
                         ServerMessage::ServerCrash => {
                             eprintln!("Server crashed");
                             return;
-                        },
-                        ServerMessage::Chat { player, message } => {
-                            let player_name = users.get(&player).unwrap_or(&format!("Player {}", player)).to_string();
-                            println!("{} says: {}", player_name, message);
+                        }
 
-
-                        },
-                        ServerMessage::ClientConnected { player } => {
-                            users.insert(player, format!("Player {}", player));
-                            println!("Player {} joined", player);
-                        },
-                        ServerMessage::ClientDisconnected { player } => {
-                            if let Some(player_name) = users.remove(&player) {
-                                println!("{} left", player_name);
-                            } else {
-                                println!("Player {} left", player);
-                            }
-                        },
                         _ => {}
                     }
-                },
+                }
                 Err(e) => {
                     eprintln!("Failed to deserialize server message: {:?}", e);
                 }
             }
-        } else {
-            std::thread::sleep(Duration::from_millis(100));
         }
 
         while let Ok(input) = input_rx.try_recv() {
@@ -82,30 +74,24 @@ pub fn run_client(client: &mut QuinnetClient) {
                     "do" => {
                         let msg = ClientMessage::Something { player };
                         let payload = bincode::serialize(&msg).unwrap();
-                        if let Err(e) = client_connection.send_payload(payload) {
-                            println!("Failed to send payload: {:?}", e);
-                        }
+                        client_connection.send_payload(payload);
                     },
                     "quit" => {
                         let msg = ClientMessage::Disconnect { player };
                         let payload = bincode::serialize(&msg).unwrap();
-                        if let Err(e) = client_connection.send_payload(payload) {
-                            println!("Failed to send payload: {:?}", e);
-                        }
+                        client_connection.send_payload(payload);
                         println!("Quitting...");
                         return;
                     },
                     other => {
                         let msg = ClientMessage::Chat { player, message: other.to_string() };
                         let payload = bincode::serialize(&msg).unwrap();
-                        if let Err(e) = client_connection.send_payload(payload) {
-                            println!("Failed to send payload: {:?}", e);
-                        }
+                        client_connection.send_payload(payload); 
                     }
                 }
             }
         }
 
-        std::thread::sleep(Duration::from_millis(16));
+        std::thread::sleep(Duration::from_millis(16)); 
     }
 }
