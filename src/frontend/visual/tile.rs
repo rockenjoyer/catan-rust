@@ -16,21 +16,6 @@ pub struct WaterTile {
     pub pos: (f32, f32),
 }
 
-//load the tile textures into egui
-pub fn setup_tile_textures(
-    mut commands: Commands,
-    mut contexts: EguiContexts,
-    textures: Option<Res<TileTextures>>,
-) {
-    if textures.is_some() {
-        return;
-    }
-    if let Ok(ctx) = contexts.ctx_mut() {
-        commands.insert_resource(load_tile_textures(ctx));
-        info!("Tile textures loaded successfully!");
-    }
-}
-
 //track what was clicked
 #[derive(Resource, Default)]
 pub struct ClickedVertex {
@@ -154,7 +139,7 @@ pub fn draw_tiles(
 
     //draw tiles with hover info
     for (i, tile) in game.tiles.iter().enumerate() {
-        draw_hex(painter, tile, &game.vertices, screen, textures, hovered_tile == Some(i));
+        draw_hex(painter, tile, i, &game.vertices, screen, textures, hovered_tile == Some(i));
     }
 }
 
@@ -245,7 +230,7 @@ pub fn draw_vertices(
 fn draw_hex(
     painter: &egui::Painter,
     tile: &Tile,
-    index: usize,
+    _index: usize,
     vertices: &[Vertex],
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     textures: &TileTextures,

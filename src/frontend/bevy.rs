@@ -4,7 +4,7 @@ use bevy_egui::EguiPlugin;
 use bevy_kira_audio::prelude::*;
 
 use crate::frontend::interface::{
-    game_panel, info_panel, rules_panel, settings_panel, volume_panel, log_panel,
+    game_panel, info_panel, rules_panel, settings_panel, log_panel,
 };
 use crate::frontend::system::{audio, camera};
 use crate::frontend::visual::{banner, cards, city, icons, road, settlement, tile, dice};
@@ -17,6 +17,7 @@ impl Plugin for FrontendPlugin {
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+                    title: format!("The Settlers of Catan - Rust Edition"),
                     ..default()
                 }),
                 ..default()
@@ -35,7 +36,6 @@ impl Plugin for FrontendPlugin {
                 ),
             )
             //resources for game state
-            .insert_resource(tile::TileShowing::default())
             .insert_resource(tile::ClickedVertex::default())
             .insert_resource(game_panel::RoadBuildingState::default())
             .insert_resource(game_panel::BuildingMode::default())
@@ -57,14 +57,11 @@ impl Plugin for FrontendPlugin {
                     
                     //UI panels (run after textures loaded)
                     info_panel::setup_info,
+                    game_panel::setup_game,
                     rules_panel::setup_rules,
                     settings_panel::setup_settings,
-                    volume_panel::setup_volume,
                     log_panel::setup_log_panel,
                 ),
             );
     }
-}
-fn change_title(mut window: Single<&mut Window>) {
-    window.title = format!("The Settlers of Catan - Rust Edition");
 }

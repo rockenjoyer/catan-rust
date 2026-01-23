@@ -9,18 +9,17 @@ pub fn setup_settings(mut context: EguiContexts) {
 
         egui::Window::new("Settings")
             .frame(window_frame())
-            .order(egui::Order::Foreground)
-            .anchor(egui::Align2::LEFT_TOP, (0.0, 40.0))
             .default_size(default_size)
-            .frame(egui::Frame::NONE)
             .order(egui::Order::Foreground) 
-            .anchor(egui::Align2::LEFT_BOTTOM, (0.0, -40.0))
+            .anchor(egui::Align2::RIGHT_TOP, (0.0, 0.0))
             .default_size((300.0, 600.0))
             .default_open(false)
             .show(context, |ui| {
                 ui.separator();
-                ui.label("This will display various settings soon.");
-                //TO-DO: add a settings icon etc.
+                ui.label("Settings soon.");
+                ui.separator();
+                ui.label("Disable/Enable Volume.");
+                //TO-DO: implement the buttons
             });
     }
 }

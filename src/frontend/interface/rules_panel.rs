@@ -11,52 +11,46 @@ pub fn setup_rules(mut context: EguiContexts) {
             .frame(rules_frame())
             .order(egui::Order::Foreground)
             .default_size(default_size)
-            .anchor(egui::Align2::RIGHT_TOP, (0.0, 0.0))
+            .anchor(egui::Align2::RIGHT_TOP, (0.0, 80.0))
             .default_open(false)
             .scroll(true)
             .show(context, |ui| {
                 ui.separator();
                 ui.label(
                     "
-1. Setup -------------
-
-- Board: Hex tiles (Brick, Lumber, Wool, Grain, Ore, Desert).
-- Number tokens on each hex (2 - 12, except desert).
+1. Setup
+- Six types of tiles on the board: Brick, Lumber, Wool, Grain, Ore and Desert.
+- Number tokens on each tile: 2 - 12, except for desert.
 - Players place 2 settlements and 2 roads at the start.
 
-2. Resources -------------
+2. Resources
 
-- Produced by hexes when the dice roll matches the hex’s number.
+- Produced by tiles when the dice roll matches the tiles' number.
 - Types: Brick, Lumber, Wool, Grain, Ore.
 - Cities produce double resources.
 
-3. Turn Structure -------------
+3. Turn Structure
 
 - Roll dice -> distribute resources.
-- Trade with players or bank/harbors.
+- Trade with players or the bank at harbors.
 - Build:
-    Roads (1 Brick + 1 Lumber)
-    Settlements (1 Brick + 1 Lumber + 1 Grain + 1 Wool)
-    Cities (2 Grain + 3 Ore)
-    Buy Development Cards (1 Wool + 1 Grain + 1 Ore)
+    Roads (1 Brick + 1 Lumber).
+    Settlements (1 Brick + 1 Lumber + 1 Grain + 1 Wool).
+    Cities (2 Grain + 3 Ore).
+    Buy Development Cards (1 Wool + 1 Grain + 1 Ore).
 
-4. Robber -------------
+4. Robber
 
 - Moves when 7 is rolled or Knight card is played.
 - Blocks resource production and steals 1 card from a player adjacent to the tile.
-- Players with >7 cards discard half when a 7 is rolled.
+- Players with > 7 cards discard half when a 7 is rolled.
 
-5. Special Bonuses -------------
+5. Victory Points
 
-- Longest Road: 5+ continuous roads → 2 VP.
-- Largest Army: 3+ Knight cards played → 2 VP.
-
-6. Victory Points -------------
-
-- Settlement = 1 VP
-- City = 2 VP
-- Victory Point card = 1 VP
-- Longest Road / Largest Army = 2 VP each
+- Settlement = 1 VP.
+- City = 2 VP.
+- Victory Point card = 1 VP.
+- Longest Road & Largest Army = 2 VP each.
 - Goal: First to 10 VP wins.
                 ",
                 );

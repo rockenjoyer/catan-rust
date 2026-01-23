@@ -7,7 +7,11 @@ use bevy_egui::{EguiContexts, egui};
 pub struct SettlementVisual {
     pub vertex: usize,
     pub owner_id: usize,
+}
+
 //resource to store settlement textures
+#[derive(Resource)]
+pub struct SettlementTextures {
     pub red: egui::TextureHandle,
     pub blue: egui::TextureHandle,
     pub green: egui::TextureHandle,
