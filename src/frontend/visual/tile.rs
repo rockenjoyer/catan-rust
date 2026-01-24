@@ -89,7 +89,25 @@ pub fn draw_tiles(
     textures: &TileTextures,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
 ) {
-    //draw water background
+    //draw water background filling entire screen while maintaining aspect ratio
+    let size = board_rect.size();
+    let aspect_ratio = 16.0 / 9.0;
+    
+    let (bg_width, bg_height) = if size.x / size.y > aspect_ratio {
+        //if the screen is wider -> match width, height extends beyond screen
+        let width = size.x;
+        (width, width / aspect_ratio)
+    } else {
+        // if the screen is taller -> match height, width extends beyond screen
+        let height = size.y;
+        (height * aspect_ratio, height)
+    };
+    
+    let board_rect = egui::Rect::from_center_size(
+        board_rect.center(),
+        egui::vec2(bg_width, bg_height)
+    );
+    
     painter.image(
         textures.water.id(),
         board_rect,
@@ -129,7 +147,7 @@ pub fn draw_tiles(
 
                 //calculate size based on distance between vertices
                 let distance = points[0].distance(points[1]);
-                let size = egui::vec2(distance * 1.6, distance * 1.9);
+                let size = egui::vec2(distance * 1.65, distance * 1.95);
 
                 let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
                 
@@ -254,7 +272,7 @@ fn draw_hex(
 
     //calculate size based on distance between vertices (responsive to scale)
     let distance = points[0].distance(points[1]);
-    let size = egui::vec2(distance * 1.6, distance * 1.9);
+    let size = egui::vec2(distance * 1.65, distance * 1.95);
 
     let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
 

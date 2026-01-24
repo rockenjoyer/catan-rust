@@ -122,7 +122,7 @@ pub fn setup_game(
                 let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
 
                 //scale based on screen size to match different resolutions
-                let scale = size.x.min(size.y) / 16.0;
+                let scale = size.x.min(size.y) / 17.0;
 
                 let origin = response.rect.center();
                 let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
