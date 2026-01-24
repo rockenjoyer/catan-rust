@@ -126,7 +126,11 @@ pub fn draw_tiles(
                 let center = points.iter()
                     .fold(egui::Vec2::ZERO, |acc, p| acc + p.to_vec2()) 
                     / points.len() as f32;
-                let size = egui::vec2(110.0, 130.0);
+
+                //calculate size based on distance between vertices
+                let distance = points[0].distance(points[1]);
+                let size = egui::vec2(distance * 1.6, distance * 1.9);
+
                 let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
                 
                 if base_rect.contains(mouse_pos) {
@@ -248,7 +252,10 @@ fn draw_hex(
         .fold(egui::Vec2::ZERO, |acc, p| acc + p.to_vec2())
         / points.len() as f32;
 
-    let size = egui::vec2(110.0, 130.0);
+    //calculate size based on distance between vertices (responsive to scale)
+    let distance = points[0].distance(points[1]);
+    let size = egui::vec2(distance * 1.6, distance * 1.9);
+
     let base_rect = egui::Rect::from_center_size(center.to_pos2(), size);
 
     let lift = if is_hovered {-10.0} else {0.0};
@@ -278,8 +285,8 @@ fn draw_hex(
             center.to_pos2() + egui::vec2(0.0, lift),
             egui::Align2::CENTER_CENTER,
             n.to_string(),
-            egui::FontId::proportional(20.0),
-            egui::Color32::from_hex("#22170c").unwrap(),
+            egui::FontId::proportional(25.0),
+            egui::Color32::BLACK,
         );
     }
 }

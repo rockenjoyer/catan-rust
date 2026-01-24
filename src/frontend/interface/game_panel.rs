@@ -121,7 +121,9 @@ pub fn setup_game(
                 let size = ui.available_size();
                 let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
 
-                let scale = 65.0;
+                //scale based on screen size to match different resolutions
+                let scale = size.x.min(size.y) / 16.0;
+
                 let origin = response.rect.center();
                 let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
 
@@ -150,8 +152,8 @@ pub fn setup_game(
                 
                 //layer 5 (cards)
                  let cards_pos = egui::pos2(
-                    response.rect.right() - 500.0,
-                    response.rect.center().y + 200.0
+                    response.rect.right() - 600.0,
+                    response.rect.center().y - 450.0
                 );
                 draw_cards(
                     &painter,
@@ -159,6 +161,7 @@ pub fn setup_game(
                     cards_pos,
                     egui::vec2(85.0, 100.0),
                     6.0,
+                    ui.input(|i| i.pointer.hover_pos()),
                 );
 
                 //layer 6 (dice)
@@ -172,7 +175,7 @@ pub fn setup_game(
 
         //control panel overlay
         egui::Window::new("Controls")
-            .frame(egui::Frame::NONE)
+            .frame(window_frame())
             .resizable(false)
             .anchor(egui::Align2::LEFT_TOP, (10.0, 10.0))
             .collapsible(false)
@@ -499,4 +502,13 @@ pub fn setup_game(
             dice_state.processed = false;
         }
     }
+}
+
+fn window_frame() -> egui::Frame {
+    egui::Frame::NONE
+        .fill(egui::Color32::from_black_alpha(150))
+        .stroke(egui::Stroke::new(1.0, egui::Color32::from_white_alpha(100)))
+        .inner_margin(10.0)
+        .outer_margin(0.0)
+        .corner_radius(egui::CornerRadius::same(15))
 }

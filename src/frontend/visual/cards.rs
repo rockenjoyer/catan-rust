@@ -122,6 +122,7 @@ pub fn draw_cards(
     start_pos: egui::Pos2,
     card_size: egui::Vec2,
     spacing: f32,
+    mouse_pos: Option<egui::Pos2>,
 ) {
     let resource_cards = [Brick, Lumber, Wool, Grain, Ore];
     let dev_cards = [
@@ -137,9 +138,22 @@ pub fn draw_cards(
         let pos = start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
         let rect = egui::Rect::from_min_size(pos, card_size);
 
+        //check if this card is hovered
+        let is_hovered = mouse_pos.map_or(false, |p| rect.contains(p));
+        let lift = if is_hovered {-10.0} else {0.0};
+        let shadow_offset = if is_hovered {10.0} else {5.0};
+
+        //shadow
         painter.image(
             resource_texture(textures, *resource).id(),
-            rect,
+            rect.translate(egui::vec2(5.0, shadow_offset)),
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+            egui::Color32::from_black_alpha(100)
+        );
+        //main card
+        painter.image(
+            resource_texture(textures, *resource).id(),
+            rect.translate(egui::vec2(0.0, lift)),
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
             egui::Color32::WHITE,
         );
@@ -151,9 +165,23 @@ pub fn draw_cards(
         let pos = start_pos + egui::vec2((card_size.x + spacing) * i as f32, line_spacing);
         let rect = egui::Rect::from_min_size(pos, card_size);
 
+        //check if this card is hovered
+        let is_hovered = mouse_pos.map_or(false, |p| rect.contains(p));
+        let lift = if is_hovered {-10.0} else {0.0};
+        let shadow_offset = if is_hovered {10.0} else {5.0};
+
+        //shadow
         painter.image(
             devcard_texture(textures, *devcard).id(),
-            rect,
+            rect.translate(egui::vec2(5.0, shadow_offset)),
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+            egui::Color32::from_black_alpha(100)
+        );
+
+        //main card
+        painter.image(
+            devcard_texture(textures, *devcard).id(),
+            rect.translate(egui::vec2(0.0, lift)),
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
             egui::Color32::WHITE,
         );

@@ -7,7 +7,7 @@ use crate::frontend::interface::{
     game_panel, info_panel, rules_panel, settings_panel, log_panel,
 };
 use crate::frontend::system::{audio, camera};
-use crate::frontend::visual::{banner, cards, city, icons, road, settlement, tile, dice};
+use crate::frontend::visual::{cards, city, icons, road, settlement, tile, dice};
 pub struct FrontendPlugin;
 
 impl Plugin for FrontendPlugin {
@@ -52,7 +52,6 @@ impl Plugin for FrontendPlugin {
                     cards::setup_cards_textures,
                     settlement::setup_settlement_textures,
                     city::setup_city_textures,
-                    banner::setup_banner_textures,
                     icons::setup_icon_textures,
                     
                     //UI panels (run after textures loaded)

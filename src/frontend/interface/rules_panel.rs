@@ -5,13 +5,13 @@ pub fn setup_rules(mut context: EguiContexts) {
     if let Ok(context) = context.ctx_mut() {
         apply_style(context);
 
-        let default_size = egui::vec2(500.0, 500.0);
+        let default_size = egui::vec2(300.0, 400.0);
 
         egui::Window::new("Rules")
-            .frame(rules_frame())
+            .frame(window_frame())
             .order(egui::Order::Foreground)
             .default_size(default_size)
-            .anchor(egui::Align2::RIGHT_TOP, (0.0, 80.0))
+            .anchor(egui::Align2::RIGHT_BOTTOM, (0.0, -60.0))
             .default_open(false)
             .scroll(true)
             .show(context, |ui| {
@@ -58,8 +58,11 @@ pub fn setup_rules(mut context: EguiContexts) {
     }
 }
 
-fn rules_frame() -> egui::Frame {
-    egui::Frame::new()
-        .fill(egui::Color32::from_hex("#623122bd").unwrap())
+fn window_frame() -> egui::Frame {
+    egui::Frame::NONE
+        .fill(egui::Color32::from_black_alpha(150))
+        .stroke(egui::Stroke::new(1.0, egui::Color32::from_white_alpha(100)))
+        .inner_margin(10.0)
+        .outer_margin(0.0)
         .corner_radius(egui::CornerRadius::same(15))
 }

@@ -31,7 +31,7 @@ pub fn apply_style(ctx: &egui::Context) {
             egui::FontId::new(28.0, egui::FontFamily::Proportional),
         );
 
-        // All text black
+        //all text white
         style.visuals.override_text_color = Some(egui::Color32::WHITE);
     });
 }

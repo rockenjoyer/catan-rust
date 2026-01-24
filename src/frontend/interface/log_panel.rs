@@ -80,15 +80,9 @@ pub fn setup_log_panel(
             .resizable(false)
             .collapsible(true)
             .default_open(false)
-            .default_pos((10.0, 300.0))
+            .default_pos((10.0, 500.0))
             .movable(true)
-            .frame(
-                egui::Frame::NONE
-                    .fill(egui::Color32::from_black_alpha(150))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_white_alpha(100)))
-                    .inner_margin(10.0)
-                    .outer_margin(0.0)
-            )
+            .frame(window_frame())
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("📋 Game Log");
@@ -131,4 +125,13 @@ pub fn setup_log_panel(
                     });
             });
     }
+}
+
+fn window_frame() -> egui::Frame {
+    egui::Frame::NONE
+        .fill(egui::Color32::from_black_alpha(150))
+        .stroke(egui::Stroke::new(1.0, egui::Color32::from_white_alpha(100)))
+        .inner_margin(10.0)
+        .outer_margin(0.0)
+        .corner_radius(egui::CornerRadius::same(15))
 }
