@@ -5,3 +5,4 @@ pub mod road;
 pub mod settlement;
 pub mod tile;
 pub mod dice;
+pub mod startscreen;

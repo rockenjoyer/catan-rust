@@ -1,7 +1,16 @@
 use crate::frontend::interface::style::apply_style;
+use crate::frontend::system::audio::{AudioState, toggle_music};
+use crate::frontend::bevy::GameState;
+use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
+use bevy_kira_audio::AudioInstance;
 
-pub fn setup_settings(mut context: EguiContexts) {
+pub fn setup_settings(
+    mut context: EguiContexts,
+    mut audio_state: ResMut<AudioState>,
+    mut audio_instances: ResMut<Assets<AudioInstance>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
     if let Ok(context) = context.ctx_mut() {
         apply_style(context);
 
@@ -11,15 +20,28 @@ pub fn setup_settings(mut context: EguiContexts) {
             .frame(window_frame())
             .default_size(default_size)
             .order(egui::Order::Foreground) 
-            .anchor(egui::Align2::RIGHT_BOTTOM, (0.0, 0.0))
+            .anchor(egui::Align2::LEFT_BOTTOM, (0.0, 0.0))
             .default_size((300.0, 600.0))
             .default_open(false)
             .show(context, |ui| {
-                ui.separator();
-                ui.label("Settings soon.");
-                ui.separator();
-                ui.label("Disable/Enable Volume.");
-                //TO-DO: implement the buttons
+                
+                let button_text = if audio_state.is_muted {
+                    "🔇 Unmute Music"
+                } else {
+                    "🔊 Mute Music"
+                };
+                
+                if ui.button(button_text).clicked() {
+                    toggle_music(&mut audio_state, &mut audio_instances);
+                }
+                
+                if ui.button("🏠 Return to Main Menu").clicked() {
+                    next_state.set(GameState::MainMenu);
+                }
+                
+                if ui.button("❌ Quit Game").clicked() {
+                    std::process::exit(0);
+                }
             });
     }
 }

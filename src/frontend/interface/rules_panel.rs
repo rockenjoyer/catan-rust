@@ -11,7 +11,7 @@ pub fn setup_rules(mut context: EguiContexts) {
             .frame(window_frame())
             .order(egui::Order::Foreground)
             .default_size(default_size)
-            .anchor(egui::Align2::RIGHT_BOTTOM, (0.0, -60.0))
+            .anchor(egui::Align2::RIGHT_BOTTOM, (0.0, 0.0))
             .default_open(false)
             .scroll(true)
             .show(context, |ui| {

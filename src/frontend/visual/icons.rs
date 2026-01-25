@@ -9,40 +9,6 @@ pub struct IconTextures {
     pub volume: egui::TextureHandle,
 }
 
-//resources to track window visibility state
-#[derive(Resource)]
-pub struct SettingsWindowState {
-    pub open: bool,
-}
-
-impl Default for SettingsWindowState {
-    fn default() -> Self {
-        SettingsWindowState { open: false }
-    }
-}
-
-#[derive(Resource)]
-pub struct RulesWindowState {
-    pub open: bool,
-}
-
-impl Default for RulesWindowState {
-    fn default() -> Self {
-        RulesWindowState { open: false }
-    }
-}
-
-#[derive(Resource)]
-pub struct VolumeWindowState {
-    pub open: bool,
-}
-
-impl Default for VolumeWindowState {
-    fn default() -> Self {
-        VolumeWindowState { open: false }
-    }
-}
-
 //load the icon textures into egui
 pub fn setup_icon_textures(
     mut commands: Commands,
@@ -81,6 +47,6 @@ pub fn load_icon_textures(ctx: &egui::Context) -> IconTextures {
     IconTextures {
         settings: load("assets/icons/settings.png"),
         rules: load("assets/icons/rules.png"),
-        volume: load("assets/icons/volume.png"),
+        volume: load("assets/icons/volume.png")
     }
 }
