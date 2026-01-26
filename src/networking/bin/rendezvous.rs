@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::net::{UdpSocket, SocketAddr};
-use std::time::{Instant, Duration};
+use std::time::Duration;
 
 fn main() {
-    let socket = UdpSocket::bind("0.0.0.0:4000").expect("Failed to bind rendezvous");
+    let socket = UdpSocket::bind("0.0.0.0:4000").expect("Failed to bind rendezvous server");
     socket.set_nonblocking(true).unwrap();
 
     println!("Rendezvous server running on 0.0.0.0:4000");
@@ -12,40 +12,29 @@ fn main() {
     let mut buf = [0u8; 256];
 
     loop {
-
         if let Ok((len, addr)) = socket.recv_from(&mut buf) {
             let msg = String::from_utf8_lossy(&buf[..len]).trim().to_string();
+            println!("Message from {}: {}", addr, msg);
 
             if let Some(code) = msg.strip_prefix("REGISTER ") {
-                hosts.insert(code.to_string(), addr);
-                println!("Registered host: {} => {}", code, addr);
+                let server_addr = SocketAddr::new(addr.ip(), 6000);
+                hosts.insert(code.to_string(), server_addr);
+
+                println!("Registered host: {} => {}", code, server_addr);
                 socket.send_to(b"READY", addr).ok();
-            }
 
-            if let Some(code) = msg.strip_prefix("JOIN ") {
-                if let Some(&host_addr) = hosts.get(code) {
-
-                    socket.send_to(host_addr.to_string().as_bytes(), addr).ok();
-
-                    socket.send_to(addr.to_string().as_bytes(), host_addr).ok();
-
-                    println!(
-                        "Introduced client {} <-> host {} for join code {}",
-                        addr, host_addr, code
-                    );
+            } else if let Some(code) = msg.strip_prefix("JOIN ") {
+                if let Some(server_addr) = hosts.get(code) {
+                    let server_addr_str = server_addr.to_string();
+                    
+                    println!("Sending server address {} to client {}", server_addr_str, addr);
+                    socket.send_to(server_addr_str.as_bytes(), addr).ok();
                 } else {
-                    println!(
-                        "Client {} tried to join with unknown code {}",
-                        addr, code
-                    );
+                    println!("Client {} tried to join with unknown code {}", addr, code);
                 }
             }
-
-            println!("Message from {}: {}", addr, msg);
         }
-
 
         std::thread::sleep(Duration::from_millis(10));
     }
 }
-

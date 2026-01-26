@@ -1,15 +1,20 @@
-use bevy_quinnet::server::endpoint::Endpoint;
-use bevy_quinnet::shared::ClientId;
-use bevy_quinnet::shared::channels::ChannelId;
-use bevy_quinnet::server::{QuinnetServer, ServerReceiveError};
-use bevy_quinnet::client::{ConnectionClosed, QuinnetClient, connection};
 use bytes::Bytes;
-use bevy_quinnet::client::connection::ClientSideConnection;
-
-use crate::networking_test::protocol::*;
-
-use std::time::Duration;
 use bincode;
+
+use bevy_quinnet::{
+    server::{
+        endpoint::Endpoint, QuinnetServer, ServerReceiveError
+    },
+    client::{
+        ConnectionClosed, QuinnetClient, connection::ClientSideConnection
+    },
+    shared::{
+        ClientId, channels::ChannelId
+    }
+};
+
+use crate::networking::protocol::{ServerMessage, ClientMessage};
+
 
 pub struct ServerTransport {
     server: QuinnetServer,
