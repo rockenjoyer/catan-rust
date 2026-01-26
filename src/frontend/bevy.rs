@@ -4,7 +4,7 @@ use bevy_egui::EguiPlugin;
 use bevy_kira_audio::prelude::*;
 
 use crate::frontend::interface::{
-    game_panel, info_panel, rules_panel, settings_panel, log_panel, main_menu,
+    game_panel, info_panel, settings_panel, log_panel, main_menu,
 };
 use crate::frontend::system::{audio, camera};
 use crate::frontend::visual::{cards, city, icons, road, settlement, tile, dice, startscreen};
@@ -56,6 +56,7 @@ impl Plugin for FrontendPlugin {
             .insert_resource(dice::DiceRollState::default())
             .insert_resource(log_panel::GameLog::default())
             .insert_resource(audio::AudioState::default())
+            .insert_resource(main_menu::MainMenuState::default())
             
             //main menu systems
             .add_systems(
@@ -63,6 +64,7 @@ impl Plugin for FrontendPlugin {
                 (
                     startscreen::setup_startscreen_texture,
                     main_menu::setup_main_menu,
+                    settings_panel::setup_settings,
                 ).run_if(in_state(GameState::MainMenu)),
             )
             //egui pass: texture loading and UI systems
@@ -80,7 +82,6 @@ impl Plugin for FrontendPlugin {
                     //UI panels (run after textures loaded)
                     info_panel::setup_info,
                     game_panel::setup_game,
-                    rules_panel::setup_rules,
                     settings_panel::setup_settings,
                     log_panel::setup_log_panel,
                 ).run_if(in_state(GameState::InGame)),

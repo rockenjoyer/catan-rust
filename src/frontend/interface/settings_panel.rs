@@ -10,21 +10,26 @@ pub fn setup_settings(
     mut audio_state: ResMut<AudioState>,
     mut audio_instances: ResMut<Assets<AudioInstance>>,
     mut next_state: ResMut<NextState<GameState>>,
+    current_state: Res<State<GameState>>,
 ) {
     if let Ok(context) = context.ctx_mut() {
         apply_style(context);
 
         let default_size = egui::vec2(300.0, 600.0);
 
-        egui::Window::new("Settings")
-            .frame(window_frame())
+        egui::Window::new("🔧")
+            .frame(egui::Frame::NONE)
             .default_size(default_size)
             .order(egui::Order::Foreground) 
-            .anchor(egui::Align2::LEFT_BOTTOM, (0.0, 0.0))
+            .movable(false)
+            .resizable(false)
+            .anchor(egui::Align2::LEFT_BOTTOM, (10.0, -10.0))
             .default_size((300.0, 600.0))
             .default_open(false)
             .show(context, |ui| {
                 
+                button_style(ui);
+
                 let button_text = if audio_state.is_muted {
                     "🔇 Unmute Music"
                 } else {
@@ -35,22 +40,20 @@ pub fn setup_settings(
                     toggle_music(&mut audio_state, &mut audio_instances);
                 }
                 
-                if ui.button("🏠 Return to Main Menu").clicked() {
-                    next_state.set(GameState::MainMenu);
-                }
-                
-                if ui.button("❌ Quit Game").clicked() {
-                    std::process::exit(0);
+                //only show "Return to Main Menu" button when in game
+                if current_state.get() == &GameState::InGame {
+                    if ui.button("🏠 Return to Main Menu").clicked() {
+                        next_state.set(GameState::MainMenu);
+                    }
                 }
             });
     }
 }
 
-fn window_frame() -> egui::Frame {
-    egui::Frame::NONE
-        .fill(egui::Color32::from_black_alpha(150))
-        .stroke(egui::Stroke::new(1.0, egui::Color32::from_white_alpha(100)))
-        .inner_margin(10.0)
-        .outer_margin(0.0)
-        .corner_radius(egui::CornerRadius::same(15))
+fn button_style(ui: &mut egui::Ui) {
+    let button_color = egui::Color32::from_hex("#845549d5").unwrap();
+    
+    ui.style_mut().visuals.widgets.inactive.weak_bg_fill = button_color;
+    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = button_color;
+    ui.style_mut().visuals.widgets.active.weak_bg_fill = button_color;
 }
