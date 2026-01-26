@@ -2,18 +2,36 @@ use std::net::{UdpSocket, SocketAddr};
 use std::time::{Duration, Instant};
 use std::thread::sleep;
 
-pub fn host(rendezvous: &str, join_code: &str) -> SocketAddr {
-    let rendezvous_addr: SocketAddr = rendezvous.parse()
-        .expect("Rendezvous must be a valid SocketAddr, e.g., 127.0.0.1:4000");
+use crate::networking::config::ConnectionMode;
+use crate::networking::stun_request;
 
+pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
+    let rendezvous_addr: SocketAddr = mode.rendezvous_addr();
     let socket = UdpSocket::bind("0.0.0.0:0")
         .expect("Failed to bind host socket");
     socket.set_nonblocking(true).unwrap();
 
-    socket.send_to(format!("REGISTER {}", join_code).as_bytes(), rendezvous_addr)
-        .expect("Failed to register with rendezvous");
+    let addr = if mode.use_stun() {
+        let public_addr = stun_request::get_public_addr(&socket, "stun.l.google.com", 19302)
+            .expect("Failed to get public address");
 
-    println!("Hosting. Join code: {}", join_code);
+        socket.send_to(format!("REGISTER {} {}", join_code, public_addr).as_bytes(), rendezvous_addr)
+            .expect("Failed to register with rendezvous");
+
+        println!("Hosting. Join code: {}. Public address: {}", join_code, public_addr);
+        
+        public_addr
+
+    } else {
+        let addr = socket.local_addr().unwrap();
+        
+        socket.send_to(format!("REGISTER {}", join_code).as_bytes(), rendezvous_addr)
+            .expect("Failed to register with rendezvous");
+        
+        println!("Hosting. Join code: {}. Local address: {}", join_code, addr);
+        
+        addr
+    };
 
     let mut buf = [0u8; 256];
     let start_time = Instant::now();
@@ -23,7 +41,7 @@ pub fn host(rendezvous: &str, join_code: &str) -> SocketAddr {
         if let Ok((len, _)) = socket.recv_from(&mut buf) {
             let msg = &buf[..len];
             if msg == b"READY" {
-                let server_addr = SocketAddr::new(socket.local_addr().unwrap().ip(), 6000);
+                let server_addr = SocketAddr::new(addr.ip(), 6000);
                 println!("Server is ready at {}, starting NAT punch", server_addr);
                 return server_addr;
             }
@@ -37,16 +55,29 @@ pub fn host(rendezvous: &str, join_code: &str) -> SocketAddr {
     }
 }
 
-pub fn join(rendezvous: &str, join_code: &str) -> SocketAddr {
-    let rendezvous_addr: SocketAddr = rendezvous.parse()
-        .expect("Rendezvous must be a valid SocketAddr, e.g., 127.0.0.1:4000");
-
+pub fn join(mode: ConnectionMode, join_code: &str) -> SocketAddr {
+    let rendezvous_addr: SocketAddr = mode.rendezvous_addr();
     let socket = UdpSocket::bind("0.0.0.0:0")
         .expect("Failed to bind client socket");
     socket.set_nonblocking(true).unwrap();
 
-    socket.send_to(format!("JOIN {}", join_code).as_bytes(), rendezvous_addr)
+    let addr = if mode.use_stun() {
+        let public_addr = stun_request::get_public_addr(&socket, "stun.l.google.com", 19302)
+            .expect("Failed to get public address");
+
+        socket.send_to(format!("JOIN {} {}", join_code, public_addr).as_bytes(), rendezvous_addr)
+            .expect("Failed to send join request");
+        
+        public_addr
+
+    } else {
+        let addr = socket.local_addr().unwrap();
+        
+        socket.send_to(format!("JOIN {}", join_code).as_bytes(), rendezvous_addr)
         .expect("Failed to send join request");
+        
+        addr
+    };
 
     let mut buf = [0u8; 256];
     loop {

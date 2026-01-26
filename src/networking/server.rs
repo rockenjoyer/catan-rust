@@ -21,6 +21,7 @@ use bevy_quinnet::{
 
 use crate::networking::protocol::*;
 use crate::networking::bootstrap;
+use crate::networking::config::ConnectionMode;
 
 #[derive(Resource, Debug, Clone, Default)]
 pub struct Users {
@@ -160,14 +161,14 @@ pub fn start_server(mut server: ResMut<QuinnetServer>) {
     let join_code = "ABC123".to_string();
     println!("Server started. Join code: {}", join_code);
 
-    let server_addr = bootstrap::host("127.0.0.1:4000", &join_code);
+    let server_addr = bootstrap::host(ConnectionMode::LOCAL, &join_code);
     println!("Server address: {}", server_addr);
 
     let _ = server.start_endpoint(
         ServerEndpointConfiguration {
-            addr_config: EndpointAddrConfiguration::from_ip(Ipv4Addr::new(127, 0, 0, 1), 6000),
+            addr_config: EndpointAddrConfiguration::from_ip(Ipv4Addr::new(0, 0, 0, 0), 6000),
             cert_mode: CertificateRetrievalMode::GenerateSelfSigned {
-                server_hostname: "127.0.0.1".to_string(),
+                server_hostname: "84.134.111.72".to_string(),
             },
             defaultables: Default::default(),
         }
