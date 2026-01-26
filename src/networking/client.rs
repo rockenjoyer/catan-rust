@@ -26,6 +26,7 @@ use bevy_quinnet::{
 
 use crate::networking::protocol::*;
 use crate::networking::bootstrap;
+use crate::networking::config::ConnectionMode;
 
 #[derive(Resource, Debug, Clone, Default)]
 pub struct Users {
@@ -158,7 +159,7 @@ pub fn handle_client_events(
     mut client: ResMut<QuinnetClient>,
 ) {
     if !connection_events.is_empty() {
-        // We are connected
+
         let username: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(7)
@@ -190,7 +191,7 @@ pub fn start_connection(mut client: ResMut<QuinnetClient>) {
     let join_code = std::env::args().nth(1).expect("join code");
     println!("Attempting to join with code: {}", join_code);
 
-    let server_addr = bootstrap::join("127.0.0.1:4000", &join_code);
+    let server_addr = bootstrap::join(ConnectionMode::LOCAL, &join_code);
     println!("Game server address obtained: {}", server_addr);
 
     let _ = client.open_connection(ClientConnectionConfiguration {
