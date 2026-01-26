@@ -2,11 +2,11 @@ use std::net::{UdpSocket, SocketAddr};
 use std::time::{Duration, Instant};
 use std::thread::sleep;
 
-pub fn host(rendezvous: &str, join_code: &str) -> (UdpSocket, SocketAddr) {
+pub fn host(rendezvous: &str, join_code: &str) -> SocketAddr {
     let rendezvous_addr: SocketAddr = rendezvous.parse()
         .expect("Rendezvous must be a valid SocketAddr, e.g., 127.0.0.1:4000");
 
-    let socket = UdpSocket::bind("0.0.0.0:5000")
+    let socket = UdpSocket::bind("0.0.0.0:0")
         .expect("Failed to bind host socket");
     socket.set_nonblocking(true).unwrap();
 
@@ -19,12 +19,13 @@ pub fn host(rendezvous: &str, join_code: &str) -> (UdpSocket, SocketAddr) {
     let start_time = Instant::now();
     let timeout = Duration::from_secs(5);
 
-    let server_addr = loop {
-        if let Ok((len, addr)) = socket.recv_from(&mut buf) {
+    loop {
+        if let Ok((len, _)) = socket.recv_from(&mut buf) {
             let msg = &buf[..len];
             if msg == b"READY" {
-                println!("Server is ready at {}, starting NAT punch", addr);
-                break addr;
+                let server_addr = SocketAddr::new(socket.local_addr().unwrap().ip(), 6000);
+                println!("Server is ready at {}, starting NAT punch", server_addr);
+                return server_addr;
             }
         }
 
@@ -33,17 +34,10 @@ pub fn host(rendezvous: &str, join_code: &str) -> (UdpSocket, SocketAddr) {
         }
 
         sleep(Duration::from_millis(10));
-    };
-
-    for _ in 0..50 {
-        socket.send_to(b"punch", server_addr).ok();
-        sleep(Duration::from_millis(50));
     }
-
-    (socket, server_addr)
 }
 
-pub fn join(rendezvous: &str, join_code: &str) -> (UdpSocket, SocketAddr) {
+pub fn join(rendezvous: &str, join_code: &str) -> SocketAddr {
     let rendezvous_addr: SocketAddr = rendezvous.parse()
         .expect("Rendezvous must be a valid SocketAddr, e.g., 127.0.0.1:4000");
 
@@ -55,20 +49,14 @@ pub fn join(rendezvous: &str, join_code: &str) -> (UdpSocket, SocketAddr) {
         .expect("Failed to send join request");
 
     let mut buf = [0u8; 256];
-    let server_addr = loop {
+    loop {
         if let Ok((len, _)) = socket.recv_from(&mut buf) {
-            let addr: SocketAddr = String::from_utf8_lossy(&buf[..len])
-                .parse()
+            let server_addr_str = String::from_utf8_lossy(&buf[..len]).trim().to_string();
+            let addr: SocketAddr = server_addr_str.parse()
                 .expect("Failed to parse server address");
-            break addr;
+            println!("Joining server at {}", addr);
+            return addr;
         }
         sleep(Duration::from_millis(10));
-    };
-
-    for _ in 0..50 {
-        socket.send_to(b"punch", server_addr).ok();
-        sleep(Duration::from_millis(50));
     }
-
-    (socket, server_addr)
 }
