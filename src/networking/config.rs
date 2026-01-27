@@ -11,7 +11,7 @@ impl ConnectionMode {
         match self {
             ConnectionMode::LOCAL => "127.0.0.1:4000".parse().unwrap(),
             ConnectionMode::LAN => "192.168.2.114:4000".parse().unwrap(),  
-            ConnectionMode::REMOTE => " 84.134.111.72:4000".parse().unwrap(),
+            ConnectionMode::REMOTE => "84.134.111.72:4000".parse().unwrap(),
         }
     }
 
