@@ -13,8 +13,8 @@ pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>) {
 
         let default_size = (500.0, 70.0);
 
-        //info window top
-        egui::Window::new("The Settlers of Catan")
+        //info window
+        egui::Window::new("Current Round Info")
             .frame(window_frame())
             .order(egui::Order::Foreground)
             .resizable(false)
@@ -22,26 +22,12 @@ pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>) {
             .anchor(egui::Align2::CENTER_TOP, (0.0, 0.0))
             .default_size(default_size)
             .show(context, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.label("A Rust implementation of the classic board game");
-                });
-            });
-
-        //info window bottom
-        egui::Window::new("Current Round Info")
-            .frame(window_frame())
-            .order(egui::Order::Foreground)
-            .resizable(false)
-            .collapsible(false)
-            .anchor(egui::Align2::CENTER_BOTTOM, (0.0, 0.0))
-            .default_size(default_size)
-            .show(context, |ui| {
                 let current = &game.players[game.current_player];
 
                 ui.label(format!("Current Player: {} (VP: {})", current.name, current.victory_points));
 
-                ui.label(format!("Resources: "));
                 ui.horizontal(|ui| {
+                    ui.label(format!("Resources: "));
                     for (resource, &amount) in &current.resources {
                         if amount > 0 {
                             ui.label(format!("{:?}: {}", resource, amount));
@@ -50,7 +36,7 @@ pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>) {
                 });
 
                 ui.separator();
-                
+
                 ui.label(format!("Settlements: {} | Cities: {} | Roads: {}",
                     current.settlements.len(),
                     current.cities.len(),

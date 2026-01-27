@@ -153,7 +153,7 @@ pub fn setup_game(
                 //layer 5 (cards)
                  let cards_pos = egui::pos2(
                     response.rect.right() - 600.0,
-                    response.rect.center().y - 450.0
+                    response.rect.center().y + 100.0
                 );
                 draw_cards(
                     &painter,

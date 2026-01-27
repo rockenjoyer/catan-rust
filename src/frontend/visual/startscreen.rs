@@ -43,11 +43,10 @@ pub fn load_startscreen_texture(ctx: &egui::Context) -> StartscreenTexture {
 
 //draw background image filling the entire available area
 pub fn draw_background(
-    ui: &mut egui::Ui, 
+    ui: &mut egui::Ui,
     texture: &StartscreenTexture,
     available_size: egui::Vec2,
 ) {
-
     let aspect_ratio = 16.0 / 9.0;
 
     let (bg_width, bg_height) = if available_size.x / available_size.y > aspect_ratio {
@@ -59,12 +58,9 @@ pub fn draw_background(
         let height = available_size.y;
         (height * aspect_ratio, height)
     };
-    
+
     let center = ui.available_rect_before_wrap().center();
-    let bg_rect = egui::Rect::from_center_size(
-        center,
-        egui::vec2(bg_width, bg_height)
-    );
+    let bg_rect = egui::Rect::from_center_size(center, egui::vec2(bg_width, bg_height));
 
     ui.painter().image(
         texture.startscreen.id(),
