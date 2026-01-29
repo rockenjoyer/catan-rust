@@ -5,6 +5,7 @@ use std::rc::Rc; //mutability for "Game" while using Rc
 
 use catan_rust::backend::game::Game;
 use catan_rust::frontend::bevy::FrontendPlugin;
+use catan_rust::audio;
 
 fn main() {
     //building a bevy app, creating the game state and registering our bevy FrontendPlugin
@@ -15,7 +16,5 @@ fn main() {
     App::new()
         //our defined frontend plugin for UI
         .add_plugins(FrontendPlugin)
-        //inserting the game state as a non-send resource (main thread only)
-        .insert_non_send_resource(game.clone())
         .run();
 }

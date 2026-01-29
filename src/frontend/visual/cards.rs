@@ -115,75 +115,310 @@ pub fn devcard_texture<'a>(
         .expect("The devcard texture is missing!")
 }
 
-//draw all resource and development cards in two lines
+//helper function to draw a card with 3D perspective effect
+//returns true if the card was clicked
+fn draw_card_with_3d_effect(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    texture_id: egui::TextureId,
+    rect: egui::Rect,
+    mouse_pos: Option<egui::Pos2>,
+    hover_scale: f32,
+    hover_lift: f32,
+) -> (egui::Rect, bool) {
+    let is_hovered = mouse_pos.map_or(false, |pos| rect.contains(pos));
+    
+    //check for clicks
+    let was_clicked = is_hovered && ui.input(|i| i.pointer.primary_clicked());
+
+    if !is_hovered {
+        //normal rendering
+        painter.image(texture_id, rect,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)), egui::Color32::WHITE);
+        return (rect, was_clicked);
+    }
+    
+    //calculate 3D perspective effect
+    let center = rect.center();
+    let mouse = mouse_pos.unwrap();
+    
+    //calculate rotation based on mouse position relative to card center
+    let rel_x = (mouse.x - center.x) / (rect.width() / 2.0); // -1 to 1
+    let rel_y = (mouse.y - center.y) / (rect.height() / 2.0); // -1 to 1
+    
+    //clamp to prevent extreme rotations
+    let tilt_x = rel_y.clamp(-1.0, 1.0) * 0.15; // Tilt around X axis (up/down)
+    let tilt_y = -rel_x.clamp(-1.0, 1.0) * 0.15; // Tilt around Y axis (left/right)
+    
+    //calculate new rect with hover effects
+    let hover_size = egui::vec2(rect.width(), rect.height()) * hover_scale;
+    let hover_center = center - egui::vec2(0.0, hover_lift);
+    
+    //create perspective-distorted quad
+    let half_w = hover_size.x / 2.0;
+    let half_h = hover_size.y / 2.0;
+    
+    //apply 3D rotation perspective to corners
+    let perspective_factor = 0.3; //how much perspective distortion
+    
+    //top-left corner
+    let tl_offset_x = -half_w + (tilt_y * half_w * perspective_factor);
+    let tl_offset_y = -half_h + (tilt_x * half_h * perspective_factor);
+    let top_left = hover_center + egui::vec2(tl_offset_x, tl_offset_y);
+    
+    //top-right corner
+    let tr_offset_x = half_w + (tilt_y * half_w * perspective_factor);
+    let tr_offset_y = -half_h - (tilt_x * half_h * perspective_factor);
+    let top_right = hover_center + egui::vec2(tr_offset_x, tr_offset_y);
+    
+    //bottom-left corner
+    let bl_offset_x = -half_w - (tilt_y * half_w * perspective_factor);
+    let bl_offset_y = half_h - (tilt_x * half_h * perspective_factor);
+    let bottom_left = hover_center + egui::vec2(bl_offset_x, bl_offset_y);
+    
+    //bottom-right corner
+    let br_offset_x = half_w - (tilt_y * half_w * perspective_factor);
+    let br_offset_y = half_h + (tilt_x * half_h * perspective_factor);
+    let bottom_right = hover_center + egui::vec2(br_offset_x, br_offset_y);
+    
+    //draw shadow first
+    let shadow_offset = egui::vec2(5.0, 5.0);
+    let shadow_mesh = egui::Mesh {
+        indices: vec![0, 1, 2, 0, 2, 3],
+        vertices: vec![
+            egui::epaint::Vertex {
+                pos: top_left + shadow_offset,
+                uv: egui::pos2(0.0, 0.0),
+                color: egui::Color32::from_black_alpha(80),
+            },
+            egui::epaint::Vertex {
+                pos: top_right + shadow_offset,
+                uv: egui::pos2(1.0, 0.0),
+                color: egui::Color32::from_black_alpha(80),
+            },
+            egui::epaint::Vertex {
+                pos: bottom_right + shadow_offset,
+                uv: egui::pos2(1.0, 1.0),
+                color: egui::Color32::from_black_alpha(80),
+            },
+            egui::epaint::Vertex {
+                pos: bottom_left + shadow_offset,
+                uv: egui::pos2(0.0, 1.0),
+                color: egui::Color32::from_black_alpha(80),
+            },
+        ],
+        texture_id: egui::TextureId::default(),
+    };
+    painter.add(egui::Shape::mesh(shadow_mesh));
+    
+    //draw the card with perspective as a textured mesh
+    let card_mesh = egui::Mesh {
+        indices: vec![0, 1, 2, 0, 2, 3],
+        vertices: vec![
+            egui::epaint::Vertex {
+                pos: top_left,
+                uv: egui::pos2(0.0, 0.0),
+                color: egui::Color32::WHITE,
+            },
+            egui::epaint::Vertex {
+                pos: top_right,
+                uv: egui::pos2(1.0, 0.0),
+                color: egui::Color32::WHITE,
+            },
+            egui::epaint::Vertex {
+                pos: bottom_right,
+                uv: egui::pos2(1.0, 1.0),
+                color: egui::Color32::WHITE,
+            },
+            egui::epaint::Vertex {
+                pos: bottom_left,
+                uv: egui::pos2(0.0, 1.0),
+                color: egui::Color32::WHITE,
+            },
+        ],
+        texture_id,
+    };
+    painter.add(egui::Shape::mesh(card_mesh));
+    
+    //return the rect for badge positioning
+    (egui::Rect::from_min_max(top_left.min(bottom_right), top_right.max(bottom_left)), was_clicked)
+}
+
+//draw all resource and development cards in two lines with hover effect
+//returns Option<(DevCard, usize)> (card type and instance id) if dev card was clicked
 pub fn draw_cards(
+    ui: &mut egui::Ui,
     painter: &egui::Painter,
     textures: &CardsTextures,
     start_pos: egui::Pos2,
     card_size: egui::Vec2,
     spacing: f32,
-    mouse_pos: Option<egui::Pos2>,
-) {
-    let resource_cards = [Brick, Lumber, Wool, Grain, Ore];
-    let dev_cards = [
-        DevCard::Knight,
-        DevCard::VictoryPoint,
-        DevCard::Monopoly,
-        DevCard::RoadBuilding,
-        DevCard::YearOfPlenty,
-    ];
+    player_resources: &HashMap<Resource, u8>,
+    player_dev_cards: &HashMap<DevCard, usize>,
+    player_dev_cards_instances: &[(DevCard, usize)],
+) -> Option<(DevCard, usize)> {
+    let hover_scale = 2.0; //2x when hovered
+    let hover_lift = 20.0; //move up by 20 pixels
+    let mouse_pos = ui.ctx().pointer_hover_pos();
+    let mut clicked_dev_card: Option<(DevCard, usize)> = None;
 
-    //first line consisting of all resource cards
-    for (i, resource) in resource_cards.iter().enumerate() {
-        let pos = start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
+    //RESOURCE CARDS (right aligned and only owned)
+    let mut owned_resources: Vec<(Resource, u8)> = player_resources
+        .iter()
+        .filter(|(res, amt)| **amt > 0 && **res != Resource::Desert)
+        .map(|(res, amt)| (*res, *amt))
+        .collect();
+
+    owned_resources.sort_by_key(|(res, _)| format!("{:?}", res));
+    
+    let total_resource_width = if owned_resources.is_empty() {
+        0.0
+    } else {
+        (card_size.x * owned_resources.len() as f32) + (spacing * (owned_resources.len() - 1) as f32)
+    };
+    let resource_start_pos = egui::pos2(start_pos.x - total_resource_width + card_size.x, start_pos.y);
+    
+    let mut hovered_res_index: Option<usize> = None;
+    for (i, _) in owned_resources.iter().enumerate() {
+        let pos = resource_start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
         let rect = egui::Rect::from_min_size(pos, card_size);
 
-        //check if this card is hovered
-        let is_hovered = mouse_pos.map_or(false, |p| rect.contains(p));
-        let lift = if is_hovered {-10.0} else {0.0};
-        let shadow_offset = if is_hovered {10.0} else {5.0};
+        if let Some(mouse) = mouse_pos {
+            if rect.contains(mouse) {
+                hovered_res_index = Some(i);
+                break;
+            }
+        }
+    }
+    
+    //draw not hovered cards first
+    for (i, (resource, amount)) in owned_resources.iter().enumerate() {
+        if Some(i) == hovered_res_index { continue; }
 
-        //shadow
-        painter.image(
-            resource_texture(textures, *resource).id(),
-            rect.translate(egui::vec2(5.0, shadow_offset)),
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-            egui::Color32::from_black_alpha(100)
-        );
-        //main card
-        painter.image(
-            resource_texture(textures, *resource).id(),
-            rect.translate(egui::vec2(0.0, lift)),
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-            egui::Color32::WHITE,
-        );
+        let pos = resource_start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
+        let rect = egui::Rect::from_min_size(pos, card_size);
+        
+        let (final_rect, _) = draw_card_with_3d_effect(ui, painter, resource_texture(textures, *resource).id(),
+         rect, None, hover_scale, hover_lift);
+        
+        if *amount > 1 {
+            let badge_pos = egui::pos2(final_rect.right() - 15.0, final_rect.top() + 5.0);
+
+            painter.circle_filled(badge_pos, 10.0, egui::Color32::from_rgb(255, 200, 0));
+            painter.circle_stroke(badge_pos, 10.0, egui::Stroke::new(2.0, egui::Color32::BLACK));
+            painter.text(badge_pos, egui::Align2::CENTER_CENTER, format!("{}x", amount),
+                egui::FontId::proportional(12.0), egui::Color32::BLACK);
+        }
+    }
+    
+    //draw hovered card on top with 3D effect
+    if let Some(i) = hovered_res_index {
+        if let Some((resource, amount)) = owned_resources.get(i) {
+            let pos = resource_start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
+            let rect = egui::Rect::from_min_size(pos, card_size);
+            let (final_rect, _) = draw_card_with_3d_effect(ui, painter, resource_texture(textures, *resource).id(),
+             rect, mouse_pos, hover_scale, hover_lift);
+            
+            if *amount > 1 {
+                let badge_pos = egui::pos2(final_rect.right() - 15.0, final_rect.top() + 5.0);
+                painter.circle_filled(badge_pos, 10.0, egui::Color32::from_rgb(255, 200, 0));
+                painter.circle_stroke(badge_pos, 10.0, egui::Stroke::new(2.0, egui::Color32::BLACK));
+                painter.text(badge_pos, egui::Align2::CENTER_CENTER, format!("{}x", amount),
+                    egui::FontId::proportional(12.0), egui::Color32::BLACK);
+            }
+        }
     }
 
-    //second line consisting of all development cards
+    //DEV CARDS (right aligned and only owned)
     let line_spacing = card_size.y + spacing;
-    for (i, devcard) in dev_cards.iter().enumerate() {
-        let pos = start_pos + egui::vec2((card_size.x + spacing) * i as f32, line_spacing);
+
+    let mut owned_dev_cards: Vec<(DevCard, usize)> = player_dev_cards
+        .iter()
+        .filter(|(_, count)| **count > 0)
+        .map(|(card, &count)| (*card, count))
+        .collect();
+
+    owned_dev_cards.sort_by_key(|(card, _)| format!("{:?}", card));
+    
+    let total_dev_width = if owned_dev_cards.is_empty() {
+        0.0
+    } else {
+        (card_size.x * owned_dev_cards.len() as f32) + (spacing * (owned_dev_cards.len() - 1) as f32)
+    };
+
+    let dev_start_pos = egui::pos2(start_pos.x - total_dev_width + card_size.x, start_pos.y + line_spacing);
+    
+    let mut hovered_dev_index: Option<usize> = None;
+
+    for (i, _) in owned_dev_cards.iter().enumerate() {
+        let pos = dev_start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
         let rect = egui::Rect::from_min_size(pos, card_size);
 
-        //check if this card is hovered
-        let is_hovered = mouse_pos.map_or(false, |p| rect.contains(p));
-        let lift = if is_hovered {-10.0} else {0.0};
-        let shadow_offset = if is_hovered {10.0} else {5.0};
-
-        //shadow
-        painter.image(
-            devcard_texture(textures, *devcard).id(),
-            rect.translate(egui::vec2(5.0, shadow_offset)),
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-            egui::Color32::from_black_alpha(100)
-        );
-
-        //main card
-        painter.image(
-            devcard_texture(textures, *devcard).id(),
-            rect.translate(egui::vec2(0.0, lift)),
-            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-            egui::Color32::WHITE,
-        );
+        if let Some(mouse) = mouse_pos {
+            if rect.contains(mouse) {
+                hovered_dev_index = Some(i);
+                break;
+            }
+        }
     }
+    
+    //draw not hovered dev cards
+    for (i, (devcard, count)) in owned_dev_cards.iter().enumerate() {
+        if Some(i) == hovered_dev_index { continue; }
+
+        let pos = dev_start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
+        let rect = egui::Rect::from_min_size(pos, card_size);
+
+        let (final_rect, was_clicked) = draw_card_with_3d_effect(ui, painter, devcard_texture(textures, *devcard).id(),
+         rect, None, hover_scale, hover_lift);
+        
+        //find the card ID if clicked
+        if was_clicked && clicked_dev_card.is_none() {
+            //get the first unplayed instance of this card type
+            for (card_type, card_id) in player_dev_cards_instances {
+                if card_type == devcard {
+                    clicked_dev_card = Some((*devcard, *card_id));
+                    break;
+                }
+            }
+        }
+
+        if *count > 1 {
+            let badge_pos = egui::pos2(final_rect.right() - 15.0, final_rect.top() + 5.0);
+            painter.circle_filled(badge_pos, 10.0, egui::Color32::from_rgb(255, 200, 0));
+            painter.circle_stroke(badge_pos, 10.0, egui::Stroke::new(2.0, egui::Color32::BLACK));
+            painter.text(badge_pos, egui::Align2::CENTER_CENTER, format!("{}x", count),
+                egui::FontId::proportional(12.0), egui::Color32::BLACK);
+        }
+    }
+    
+    //draw hovered dev card on top with 3D effect
+    if let Some(i) = hovered_dev_index {
+        if let Some((devcard, count)) = owned_dev_cards.get(i) {
+            let pos = dev_start_pos + egui::vec2((card_size.x + spacing) * i as f32, 0.0);
+            let rect = egui::Rect::from_min_size(pos, card_size);
+            let (final_rect, was_clicked) = draw_card_with_3d_effect(ui, painter, devcard_texture(textures, *devcard).id(),
+             rect, mouse_pos, hover_scale, hover_lift);
+            
+            //find the card ID if clicked
+            if was_clicked && clicked_dev_card.is_none() {
+                //get the first unplayed instance of this card type
+                for (card_type, card_id) in player_dev_cards_instances {
+                    if card_type == devcard {
+                        clicked_dev_card = Some((*devcard, *card_id));
+                        break;
+                    }
+                }
+            }
+
+            if *count > 1 {
+                let badge_pos = egui::pos2(final_rect.right() - 15.0, final_rect.top() + 5.0);
+                painter.circle_filled(badge_pos, 10.0, egui::Color32::from_rgb(255, 200, 0));
+                painter.circle_stroke(badge_pos, 10.0, egui::Stroke::new(2.0, egui::Color32::BLACK));
+                painter.text(badge_pos, egui::Align2::CENTER_CENTER, format!("{}x", count),
+                    egui::FontId::proportional(12.0), egui::Color32::BLACK);
+            }
+        }
+    }
+    clicked_dev_card
 }

@@ -83,6 +83,7 @@ pub fn setup_log_panel(
             .default_pos((10.0, 500.0))
             .movable(true)
             .frame(window_frame())
+            .order(egui::Order::Tooltip)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.heading("📋 Game Log");
@@ -133,5 +134,4 @@ fn window_frame() -> egui::Frame {
         .stroke(egui::Stroke::new(1.0, egui::Color32::from_white_alpha(100)))
         .inner_margin(10.0)
         .outer_margin(0.0)
-        .corner_radius(egui::CornerRadius::same(15))
 }
