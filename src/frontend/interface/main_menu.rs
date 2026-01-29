@@ -11,6 +11,7 @@ pub struct MainMenuState {
     pub show_credits: bool,
     pub show_rules: bool,
     pub show_window_settings: bool,
+    pub show_multiplayer_settings: bool,
 }
 
 //draw the main menu with various buttons
@@ -40,14 +41,14 @@ pub fn setup_main_menu(
                 ui.label(
                     egui::RichText::new("The Settlers of Catan")
                         .font(egui::FontId::proportional(72.0))
-                        .color(egui::Color32::from_hex("#845549").unwrap())
+                        .color(egui::Color32::from_hex("#643c32").unwrap())
                         .strong(),
                 );
                 ui.add_space(-35.0);
                 ui.label(
                     egui::RichText::new("Rust Edition")
                         .font(egui::FontId::proportional(35.0))
-                        .color(egui::Color32::from_hex("#845549").unwrap()),
+                        .color(egui::Color32::from_hex("#643c32").unwrap()),
                 );
 
                 //dynamic spacing based on window height (so it looks formatted on different resolutions)
@@ -67,6 +68,19 @@ pub fn setup_main_menu(
                     .clicked()
                 {
                     next_state.set(GameState::InGame);
+                }
+
+                ui.add_space(15.0);
+
+                //multiplayer settings button
+                if ui
+                    .add_sized(
+                        button_size,
+                        egui::Button::new(egui::RichText::new("Multiplayer").size(20.0)),
+                    )
+                    .clicked()
+                {
+                    menu_state.show_multiplayer_settings = !menu_state.show_multiplayer_settings;
                 }
 
                 ui.add_space(15.0);
@@ -128,6 +142,11 @@ pub fn setup_main_menu(
             show_credits(context, &mut menu_state.show_credits);
         }
 
+        //multiplayer settings panel
+        if menu_state.show_multiplayer_settings {
+            show_multiplayer_settings(context, &mut menu_state.show_multiplayer_settings);
+        }
+
         //rules panel
         if menu_state.show_rules {
             show_rules(context, &mut menu_state.show_rules);
@@ -142,40 +161,60 @@ pub fn setup_main_menu(
     }
 }
 
-fn show_credits(ctx: &egui::Context, show: &mut bool) {
-    egui::Window::new("Credits")
-        .open(show)
-        .frame(window_frame())
+fn show_multiplayer_settings(ctx: &egui::Context, show: &mut bool) {
+    egui::Window::new("Multiplayer Settings")
+    .open(show)
         .collapsible(false)
         .default_size(egui::vec2(700.0, 300.0))
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new("Development").strong().size(25.0));
-                ui.label("Antonio | Roman | Vojin | Laura");
+            window_frame()
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new("Local...").strong().size(25.0));
+                        ui.label("To be implemented");
+                    });
+                });
+        });
+}
 
-                ui.add_space(15.0);
+fn show_credits(ctx: &egui::Context, show: &mut bool) {
+    egui::Window::new("Credits")
+        .open(show)
+        .collapsible(false)
+        .default_size(egui::vec2(700.0, 300.0))
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .show(ctx, |ui| {
+            window_frame()
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new("Development").strong().size(25.0));
+                        ui.label("Antonio | Roman | Vojin | Laura");
 
-                ui.label(egui::RichText::new("Built with").strong().size(25.0));
-                ui.label("Bevy Engine | Rust Programming Language");
+                        ui.add_space(15.0);
 
-                ui.add_space(15.0);
+                        ui.label(egui::RichText::new("Built with").strong().size(25.0));
+                        ui.label("Bevy Engine | Rust Programming Language");
 
-                ui.label(egui::RichText::new("Original Game").strong().size(25.0));
-                ui.label("The Settlers of Catan | by Klaus Teuber");
-            });
+                        ui.add_space(15.0);
+
+                        ui.label(egui::RichText::new("Original Game").strong().size(25.0));
+                        ui.label("The Settlers of Catan | by Klaus Teuber");
+                    });
+                });
         });
 }
 
 fn show_rules(ctx: &egui::Context, show: &mut bool) {
     egui::Window::new("Rules")
         .open(show)
-        .frame(window_frame())
         .default_size(egui::vec2(700.0, 300.0))
         .collapsible(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
+            window_frame()
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
 
                 ui.label(egui::RichText::new("1. Setup").strong().size(20.0));
                 ui.add_space(10.0);
@@ -219,21 +258,23 @@ fn show_rules(ctx: &egui::Context, show: &mut bool) {
 
             });
         });
+        });
 }
 
 fn show_window_settings(ctx: &egui::Context, show: &mut bool, window: &mut Window) {
     egui::Window::new("Window Settings")
         .open(show)
-        .frame(window_frame())
         .default_size(egui::vec2(700.0, 400.0))
         .collapsible(false)
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                button_style(ui);
-                ui.add_space(10.0);
+            window_frame()
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        button_style(ui);
+                        ui.add_space(10.0);
 
-                //space for window mode settings
+                        //space for window mode settings
                 ui.label(egui::RichText::new("Window Mode").strong().size(24.0));
                 ui.add_space(10.0);
 
@@ -262,6 +303,18 @@ fn show_window_settings(ctx: &egui::Context, show: &mut bool, window: &mut Windo
                         .clicked()
                     {
                         window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+                    }
+
+                    ui.add_space(20.0);
+
+                    if ui
+                        .selectable_label(
+                            matches!(current_mode, WindowMode::Fullscreen(_, _)),
+                            egui::RichText::new("Fullscreen").size(18.0),
+                        )
+                        .clicked()
+                    {
+                        window.mode = WindowMode::Fullscreen(MonitorSelection::Current, VideoModeSelection::Current);
                     }
                 });
 
@@ -299,25 +352,25 @@ fn show_window_settings(ctx: &egui::Context, show: &mut bool, window: &mut Windo
                     ))
                     .size(16.0),
                 );
-            });
+                    });
+                });
         });
 }
 
 fn window_frame() -> egui::Frame {
     egui::Frame::NONE
-        .fill(egui::Color32::from_hex("#4c2a21").unwrap())
+        .fill(egui::Color32::from_hex("#52322aea").unwrap())
         .stroke(egui::Stroke::new(
             2.0,
             egui::Color32::from_hex("#331812").unwrap(),
         ))
         .inner_margin(20.0)
-        .outer_margin(0.0)
-        .corner_radius(egui::CornerRadius::same(20))
+        .corner_radius(egui::CornerRadius::same(10))
 }
 
 fn button_style(ui: &mut egui::Ui) {
-    let button_color = egui::Color32::from_hex("#845549ea").unwrap();
-    let outline_color = egui::Color32::from_hex("#3e211ae6").unwrap();
+    let button_color = egui::Color32::from_hex("#643c32").unwrap();
+    let outline_color = egui::Color32::from_hex("#3e211a").unwrap();
 
     ui.style_mut().visuals.widgets.inactive.weak_bg_fill = button_color;
     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = button_color;
