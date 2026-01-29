@@ -27,7 +27,8 @@ impl Default for TileShowing {
 #[derive(Resource, Default)]
 pub struct ClickedVertex {
     pub vertex_id: Option<usize>,
-    pub selected_vertex: Option<usize>, //keeps glowing untill clicked off
+    pub selected_vertex: Option<usize>,
+    pub clicked_tile: Option<usize>,
 }
 
 #[derive(Component)]
@@ -95,6 +96,7 @@ pub fn draw_tiles(
     game: &Game,
     textures: &TileTextures,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+    clicked_vertex: &mut ClickedVertex,
 ) {
     //draw water background
     painter.image(
@@ -138,6 +140,12 @@ pub fn draw_tiles(
                 
                 if base_rect.contains(mouse_pos) {
                     hovered_tile = Some(i);
+
+                    //check for click on tile
+                    if ui.input(|inp| inp.pointer.primary_clicked()) {
+                        clicked_vertex.clicked_tile = Some(i);
+                    }
+
                     break; //only hover one tile
                 }
             }
@@ -146,7 +154,7 @@ pub fn draw_tiles(
 
     //draw tiles with hover info
     for (i, tile) in game.tiles.iter().enumerate() {
-        draw_hex(painter, tile, &game.vertices, screen, textures, hovered_tile == Some(i));
+        draw_hex(painter, tile, i, &game.vertices, screen, textures, hovered_tile == Some(i), game.robber_tile);
     }
 }
 
@@ -237,10 +245,12 @@ pub fn draw_vertices(
 fn draw_hex(
     painter: &egui::Painter,
     tile: &Tile,
+    index: usize,
     vertices: &[Vertex],
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     textures: &TileTextures,
     is_hovered: bool,
+    robber_tile: usize,
 ) {
     let points: Vec<_> = tile
         .vertices
@@ -284,7 +294,27 @@ fn draw_hex(
             egui::Align2::CENTER_CENTER,
             n.to_string(),
             egui::FontId::proportional(20.0),
-            egui::Color32::from_hex("#22170c").unwrap(),
+            egui::Color32::WHITE,
+        );
+    }
+
+    //draw robber badge if this tile has the robber
+    if index == robber_tile {
+        //position badge at top-right of tile, outside the center area
+        let badge_pos = center.to_pos2() + egui::vec2(20.0, -15.0) + egui::vec2(0.0, lift);
+        let badge_radius = 15.0;
+        
+        //draw badge circle with black background
+        painter.circle_filled(badge_pos, badge_radius, egui::Color32::from_rgb(40, 40, 40));
+        painter.circle_stroke(badge_pos, badge_radius, egui::Stroke::new(2.0, egui::Color32::from_rgb(200, 50, 50)));
+        
+        //draw robber icon
+        painter.text(
+            badge_pos,
+            egui::Align2::CENTER_CENTER,
+            "R",
+            egui::FontId::proportional(18.0),
+            egui::Color32::WHITE,
         );
     }
 }

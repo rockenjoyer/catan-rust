@@ -82,6 +82,7 @@ pub fn setup_log_panel(
             .default_open(false)
             .default_pos((10.0, 300.0))
             .movable(true)
+            .order(egui::Order::Tooltip)
             .frame(
                 egui::Frame::NONE
                     .fill(egui::Color32::from_black_alpha(150))

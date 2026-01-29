@@ -28,6 +28,8 @@ impl Plugin for FrontendPlugin {
             .insert_resource(tile::ClickedVertex::default())
             .insert_resource(game_panel::RoadBuildingState::default())
             .insert_resource(game_panel::BuildingMode::default())
+            .insert_resource(game_panel::DevCardPlayState::default())
+            .insert_resource(game_panel::RobberMoveState::default())
             .insert_resource(dice::DiceRollState::default())
             .insert_resource(log_panel::GameLog::default())
             
