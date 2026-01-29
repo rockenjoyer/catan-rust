@@ -16,17 +16,26 @@ fn main() {
             let msg = String::from_utf8_lossy(&buf[..len]).trim().to_string();
             println!("Message from {}: {}", addr, msg);
 
-            if let Some(code) = msg.strip_prefix("REGISTER ") {
-                let server_addr = SocketAddr::new(addr.ip(), 6000);
-                hosts.insert(code.to_string(), server_addr);
+            if let Some(rest) = msg.strip_prefix("REGISTER ") {
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                let code = parts[0];
 
+                let server_addr = if parts.len() > 1 {
+                    parts[1].parse().unwrap_or_else(|_| SocketAddr::new(addr.ip(), 6000))
+                } else {
+                    SocketAddr::new(addr.ip(), 6000)
+                };
+
+                hosts.insert(code.to_string(), server_addr);
                 println!("Registered host: {} => {}", code, server_addr);
                 socket.send_to(b"READY", addr).ok();
 
-            } else if let Some(code) = msg.strip_prefix("JOIN ") {
+            } else if let Some(rest) = msg.strip_prefix("JOIN ") {
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                let code = parts[0];
+
                 if let Some(server_addr) = hosts.get(code) {
                     let server_addr_str = server_addr.to_string();
-                    
                     println!("Sending server address {} to client {}", server_addr_str, addr);
                     socket.send_to(server_addr_str.as_bytes(), addr).ok();
                 } else {
