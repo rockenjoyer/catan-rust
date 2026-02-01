@@ -7,7 +7,7 @@ use crate::frontend::interface::{
     game_panel, info_panel, settings_panel, log_panel, main_menu,
 };
 use crate::frontend::system::{audio, camera};
-use crate::frontend::visual::{cards, city, icons, road, settlement, tile, dice, startscreen};
+use crate::frontend::visual::{cards, city, road, settlement, tile, dice, startscreen};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
@@ -24,7 +24,7 @@ impl Plugin for FrontendPlugin {
             //window configuration
             .add_plugins(DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
-                    mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
+                    mode: WindowMode::Windowed,
                     title: format!("The Settlers of Catan - Rust Edition"),
                     ..default()
                 }),
@@ -65,6 +65,7 @@ impl Plugin for FrontendPlugin {
                 bevy_egui::EguiPrimaryContextPass,
                 (
                     startscreen::setup_startscreen_texture,
+                    startscreen::setup_logo,
                     main_menu::setup_main_menu,
                     settings_panel::setup_settings,
                 ).run_if(in_state(GameState::MainMenu)),
@@ -79,7 +80,6 @@ impl Plugin for FrontendPlugin {
                     cards::setup_cards_textures,
                     settlement::setup_settlement_textures,
                     city::setup_city_textures,
-                    icons::setup_icon_textures,
                     
                     //UI panels (run after textures loaded)
                     info_panel::setup_info,

@@ -133,6 +133,16 @@ fn draw_card_with_3d_effect(
 
     if !is_hovered {
         //normal rendering
+        //calculate shadow rect
+        let shadow_offset = egui::vec2(10.0, 10.0);
+        let shadow_rect = rect.translate(shadow_offset);
+
+        //draw shadow
+        painter.image(texture_id, shadow_rect,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+            egui::Color32::from_black_alpha(100),
+        );
+        //draw card
         painter.image(texture_id, rect,
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)), egui::Color32::WHITE);
         return (rect, was_clicked);
@@ -182,32 +192,32 @@ fn draw_card_with_3d_effect(
     let bottom_right = hover_center + egui::vec2(br_offset_x, br_offset_y);
     
     //draw shadow first
-    let shadow_offset = egui::vec2(5.0, 5.0);
+    let shadow_offset = egui::vec2(10.0, 10.0);
     let shadow_mesh = egui::Mesh {
         indices: vec![0, 1, 2, 0, 2, 3],
         vertices: vec![
             egui::epaint::Vertex {
                 pos: top_left + shadow_offset,
                 uv: egui::pos2(0.0, 0.0),
-                color: egui::Color32::from_black_alpha(80),
+                color: egui::Color32::from_black_alpha(100),
             },
             egui::epaint::Vertex {
                 pos: top_right + shadow_offset,
                 uv: egui::pos2(1.0, 0.0),
-                color: egui::Color32::from_black_alpha(80),
+                color: egui::Color32::from_black_alpha(100),
             },
             egui::epaint::Vertex {
                 pos: bottom_right + shadow_offset,
                 uv: egui::pos2(1.0, 1.0),
-                color: egui::Color32::from_black_alpha(80),
+                color: egui::Color32::from_black_alpha(100),
             },
             egui::epaint::Vertex {
                 pos: bottom_left + shadow_offset,
                 uv: egui::pos2(0.0, 1.0),
-                color: egui::Color32::from_black_alpha(80),
+                color: egui::Color32::from_black_alpha(100),
             },
         ],
-        texture_id: egui::TextureId::default(),
+        texture_id,
     };
     painter.add(egui::Shape::mesh(shadow_mesh));
     

@@ -51,8 +51,9 @@ pub fn setup_settings(
 }
 
 fn button_style(ui: &mut egui::Ui) {
-    let button_color = egui::Color32::from_hex("#845549d5").unwrap();
-    
+    //semi-transparent background for buttons
+    let button_color = egui::Color32::from_black_alpha(150);
+
     ui.style_mut().visuals.widgets.inactive.weak_bg_fill = button_color;
     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = button_color;
     ui.style_mut().visuals.widgets.active.weak_bg_fill = button_color;

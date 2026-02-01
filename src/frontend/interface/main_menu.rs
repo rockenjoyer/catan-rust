@@ -4,7 +4,7 @@ use bevy_egui::{EguiContexts, egui};
 
 use crate::frontend::bevy::GameState;
 use crate::frontend::interface::style::apply_style;
-use crate::frontend::visual::startscreen::{StartscreenTexture, draw_background};
+use crate::frontend::visual::startscreen::{StartscreenTexture, draw_background, LogoTexture};
 
 #[derive(Resource, Default)]
 pub struct MainMenuState {
@@ -18,11 +18,15 @@ pub struct MainMenuState {
 pub fn setup_main_menu(
     mut context: EguiContexts,
     mut next_state: ResMut<NextState<GameState>>,
-    texture: Option<Res<StartscreenTexture>>,
+    background: Option<Res<StartscreenTexture>>,
+    logo_image: Option<Res<LogoTexture>>,
     mut menu_state: ResMut<MainMenuState>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
-    let Some(texture) = texture else {
+    let Some(background) = background else {
+        return;
+    };
+    let Some(logo_image) = logo_image else {
         return;
     };
 
@@ -31,39 +35,38 @@ pub fn setup_main_menu(
 
         egui::CentralPanel::default().show(context, |ui| {
             //draw the background image
-            draw_background(ui, &texture, ui.available_size());
+            draw_background(ui, &background, &logo_image, ui.available_size());
 
             //draw UI
             ui.vertical_centered(|ui| {
-                ui.add_space(60.0);
 
-                //game title
-                ui.label(
-                    egui::RichText::new("The Settlers of Catan")
-                        .font(egui::FontId::proportional(72.0))
-                        .color(egui::Color32::from_hex("#643c32").unwrap())
-                        .strong(),
-                );
-                ui.add_space(-35.0);
-                ui.label(
-                    egui::RichText::new("Rust Edition")
-                        .font(egui::FontId::proportional(35.0))
-                        .color(egui::Color32::from_hex("#643c32").unwrap()),
-                );
+                //scale the buttons like the logo
+                let available_size = ui.available_size();
+                let base_size = egui::vec2(2048.0, 1152.0);
 
-                //dynamic spacing based on window height (so it looks formatted on different resolutions)
-                let spacing = (ui.available_height() * 0.2).clamp(0.0, 400.0);
-                ui.add_space(spacing);
+                let scale = (available_size.x / base_size.x)
+                    .min(available_size.y / base_size.y)
+                    .clamp(0.2, 1.0);
 
-                //change button size and apply button style
-                let button_size = egui::vec2(300.0, 60.0);
+                //calculate top space for the header logo
+                let top_space = (450.0 * scale).min(420.0);
+
+                ui.add_space(top_space);
+
+                //change button width and height based on screen size
+                let button_width = (300.0 * scale).clamp(100.0, 340.0);
+                let button_height = (80.0 * scale).clamp(25.0, 70.0);
+
+                let button_size = egui::vec2(button_width, button_height);
+                let font_size = (20.0 * scale).clamp(12.0, 22.0);
+
                 button_style(ui);
 
                 //start game button
                 if ui
                     .add_sized(
                         button_size,
-                        egui::Button::new(egui::RichText::new("Start Game").size(20.0)),
+                        egui::Button::new(egui::RichText::new("Start Game").size(font_size)),
                     )
                     .clicked()
                 {
@@ -76,7 +79,7 @@ pub fn setup_main_menu(
                 if ui
                     .add_sized(
                         button_size,
-                        egui::Button::new(egui::RichText::new("Multiplayer").size(20.0)),
+                        egui::Button::new(egui::RichText::new("Multiplayer").size(font_size)),
                     )
                     .clicked()
                 {
@@ -89,7 +92,7 @@ pub fn setup_main_menu(
                 if ui
                     .add_sized(
                         button_size,
-                        egui::Button::new(egui::RichText::new("Rules").size(20.0)),
+                        egui::Button::new(egui::RichText::new("Rules").size(font_size)),
                     )
                     .clicked()
                 {
@@ -102,7 +105,7 @@ pub fn setup_main_menu(
                 if ui
                     .add_sized(
                         button_size,
-                        egui::Button::new(egui::RichText::new("Window Settings").size(20.0)),
+                        egui::Button::new(egui::RichText::new("Window Settings").size(font_size)),
                     )
                     .clicked()
                 {
@@ -115,7 +118,7 @@ pub fn setup_main_menu(
                 if ui
                     .add_sized(
                         button_size,
-                        egui::Button::new(egui::RichText::new("Credits").size(20.0)),
+                        egui::Button::new(egui::RichText::new("Credits").size(font_size)),
                     )
                     .clicked()
                 {
@@ -128,7 +131,7 @@ pub fn setup_main_menu(
                 if ui
                     .add_sized(
                         button_size,
-                        egui::Button::new(egui::RichText::new("Quit Game").size(20.0)),
+                        egui::Button::new(egui::RichText::new("Quit Game").size(font_size)),
                     )
                     .clicked()
                 {
@@ -369,14 +372,14 @@ fn window_frame() -> egui::Frame {
 }
 
 fn button_style(ui: &mut egui::Ui) {
-    let button_color = egui::Color32::from_hex("#643c32").unwrap();
+    let button_color = egui::Color32::from_hex("#724235ec").unwrap();
     let outline_color = egui::Color32::from_hex("#3e211a").unwrap();
 
     ui.style_mut().visuals.widgets.inactive.weak_bg_fill = button_color;
     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = button_color;
     ui.style_mut().visuals.widgets.active.weak_bg_fill = button_color;
 
-    ui.style_mut().visuals.widgets.inactive.bg_stroke = egui::Stroke::new(2.0, outline_color);
-    ui.style_mut().visuals.widgets.hovered.bg_stroke = egui::Stroke::new(2.0, outline_color);
-    ui.style_mut().visuals.widgets.active.bg_stroke = egui::Stroke::new(2.0, outline_color);
+    ui.style_mut().visuals.widgets.inactive.bg_stroke = egui::Stroke::new(3.0, outline_color);
+    ui.style_mut().visuals.widgets.hovered.bg_stroke = egui::Stroke::new(3.0, outline_color);
+    ui.style_mut().visuals.widgets.active.bg_stroke = egui::Stroke::new(3.0, outline_color);
 }

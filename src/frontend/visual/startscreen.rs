@@ -6,6 +6,11 @@ pub struct StartscreenTexture {
     pub startscreen: egui::TextureHandle,
 }
 
+#[derive(Resource)]
+pub struct LogoTexture {
+    pub logo: egui::TextureHandle,
+}
+
 pub fn setup_startscreen_texture(
     mut commands: Commands,
     mut contexts: EguiContexts,
@@ -41,10 +46,47 @@ pub fn load_startscreen_texture(ctx: &egui::Context) -> StartscreenTexture {
     }
 }
 
+pub fn setup_logo(
+    mut commands: Commands,
+    mut contexts: EguiContexts,
+    texture: Option<Res<LogoTexture>>,
+) {
+    if texture.is_some() {
+        return;
+    }
+    if let Ok(ctx) = contexts.ctx_mut() {
+        commands.insert_resource(load_logo_texture(ctx));
+        info!("Logo texture loaded successfully!");
+    }
+}
+
+
+pub fn load_logo_texture(ctx: &egui::Context) -> LogoTexture {
+    let load = |path: &str| {
+        let img = image::open(path)
+            .unwrap_or_else(|_| panic!("Failed to load Logo image: {}", path))
+            .to_rgba8();
+
+        ctx.load_texture(
+            path.to_string(),
+            egui::ColorImage::from_rgba_unmultiplied(
+                [img.width() as usize, img.height() as usize],
+                &img.into_raw(),
+            ),
+            egui::TextureOptions::LINEAR,
+        )
+    };
+
+    LogoTexture {
+        logo: load("assets/game/logo.png"),
+    }
+}
+
 //draw background image filling the entire available area
 pub fn draw_background(
     ui: &mut egui::Ui,
-    texture: &StartscreenTexture,
+    background: &StartscreenTexture,
+    logo_image: &LogoTexture,
     available_size: egui::Vec2,
 ) {
     let aspect_ratio = 16.0 / 9.0;
@@ -63,9 +105,40 @@ pub fn draw_background(
     let bg_rect = egui::Rect::from_center_size(center, egui::vec2(bg_width, bg_height));
 
     ui.painter().image(
-        texture.startscreen.id(),
+        background.startscreen.id(),
         bg_rect,
         egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
         egui::Color32::WHITE,
     );
+
+    //draw logo on top, also with dynamic scaling
+    let logo_size = logo_image.logo.size_vec2();
+    let max_logo_width = available_size.x * 0.7;
+    let max_logo_height = available_size.y * 0.3;
+
+    //preserve the aspect ratio
+    let scale = (max_logo_width / logo_size.x)
+        .min(max_logo_height / logo_size.y)
+        .min(1.0);
+    let scaled_logo = logo_size * scale;
+
+    let logo_rect = ui.available_rect_before_wrap();
+    let top_center = egui::pos2(logo_rect.center().x, logo_rect.min.y);
+
+    //position logo a bit below the top center
+    let logo_pos = egui::pos2(
+        top_center.x - scaled_logo.x * 0.5,
+        top_center.y + 50.0,
+    );
+
+    let logo_rect = egui::Rect::from_min_size(logo_pos, scaled_logo);
+    
+    //draw logo
+    ui.painter().image(
+        logo_image.logo.id(),
+        logo_rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
 }
+
