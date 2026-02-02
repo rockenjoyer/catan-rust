@@ -1,20 +1,37 @@
 use bevy_egui::egui;
+use std::sync::Arc;
 
 pub fn apply_style(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    
+    fonts.font_data.insert(
+        "cinzel".to_owned(),
+        Arc::new(egui::FontData::from_static(include_bytes!("../../../assets/fonts/Cinzel.ttf"))),
+    );
+
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "cinzel".to_owned());
+
+    ctx.set_fonts(fonts);
+
     ctx.style_mut(|style| {
-        //window title size
+        style.text_styles.insert(
+            egui::TextStyle::Body,
+            egui::FontId::new(16.0, egui::FontFamily::Proportional),
+        );
+        style.text_styles.insert(
+            egui::TextStyle::Button,
+            egui::FontId::new(16.0, egui::FontFamily::Proportional),
+        );
         style.text_styles.insert(
             egui::TextStyle::Heading,
-            egui::FontId::new(26.0, egui::FontFamily::Proportional),
+            egui::FontId::new(28.0, egui::FontFamily::Proportional),
         );
 
-        //window title color
-        style.visuals.widgets.noninteractive.fg_stroke.color =
-            egui::Color32::from_hex("#2e2114ff").unwrap();
-
-        //label color
-        style.visuals.override_text_color = Some(egui::Color32::from_hex("#2e2114ff").unwrap());
-
-        //TO-DO: implement a nice layout
+        //all text white
+        style.visuals.override_text_color = Some(egui::Color32::WHITE);
     });
 }

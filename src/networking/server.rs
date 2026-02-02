@@ -1,266 +1,177 @@
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::{Mutex, Notify, broadcast, mpsc};
 use std::collections::HashMap;
-use std::sync::Arc;
-use serde_json;
+use std::time::Duration;
+use std::net::Ipv4Addr;
 
-pub mod message;
-pub mod game_server;
+use bevy::prelude::*;
 
-use message::GameMessage;
-use game_server::GameServer;
+use bevy_ecs::message::MessageReader;
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
 
-use crate::message::ServerMessage;
-
-/// Handles client connections and inputs
-/// Numbers joined clients (1-4)
-/// Broadcasts basic messages to client (transmitter only)
-async fn handle_client(
-    stream: TcpStream,
-    server: Arc<Mutex<GameServer>>,
-    clients: Arc<Mutex<HashMap<u8, broadcast::Sender<GameMessage>>>>,
-    player: u8,
-) {
-    let (reader, mut writer) = stream.into_split();
-    let mut reader = BufReader::new(reader);
-
-    let (tx, mut rx) = broadcast::channel(32);
-
-    {
-        let mut clients_lock = clients.lock().await;
-        clients_lock.insert(player, tx);
+use bevy_quinnet::{
+    server::{
+        certificate::CertificateRetrievalMode, ConnectionLostEvent,
+        EndpointAddrConfiguration, ServerEndpointConfiguration,
+        QuinnetServer, endpoint::Endpoint
+    },
+    shared::{
+        ClientId,
     }
+};
 
+use crate::networking::protocol::*;
+use crate::networking::bootstrap;
+use crate::networking::config::ConnectionMode;
 
-    if let Err(e) = write_msg(&mut writer, &GameMessage::Confirmation { player }).await {
-        eprintln!("Failed to broadcast confirmation message to player {}: {}", player, e);
-        return;
-    }
-
-    broadcast_msg(&clients, GameMessage::Join { player }).await;
-
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<GameMessage>();
-
-    tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if let Err(e) = out_tx.send(msg) {
-                eprintln!("Failed to forward message to client {}: {}", player, e);
-                break;
-            }
-        }
-    });
-
-    tokio::spawn(async move {
-        while let Some(msg) = out_rx.recv().await {
-            if let Err(e) = write_msg(&mut writer, &msg).await {
-                eprintln!("Failed to write message: {}", e);
-                break;
-            }
-        }
-    });
-
-    /*let mut buf = vec![0u8; 1024];
-    loop {
-        let n = match reader.read(&mut buf).await {
-            Ok(0) => {
-                println!("Player {} disconnected (connection closed)", player);
-                break;
-            }
-            Ok(n) => n,
-            Err(e) => {
-                eprint!("Player {} disconnected (error: {})", player, e);
-                break;
-            }
-        };
-
-        let msg: GameMessage = match serde_json::from_slice(&buf[..n]) {
-            Ok(m) => m,
-            Err(e) => {
-                eprint!("Player {} sent invalid message: {}", player, e);
-                buf = vec![0u8; 1024];
-                continue;
-            }
-        };
-        buf = vec![0u8; 1024];
-
-        match msg {
-            GameMessage::TurnOver { player } => {
-                let mut server_lock = server.lock().await;
-                if server_lock.is_current_player(player) {
-                    server_lock.next_turn();
-                    if let Some(current_player) = server_lock.get_current_player() {
-                        broadcast_msg(&clients, GameMessage::Turn { player: server_lock.current_player }).await;
-                    }
-                }
-            },
-            GameMessage::Something { player } => {
-                broadcast_msg(&clients, GameMessage::Something { player }).await;
-            },
-            GameMessage::Disconnect { player } => {
-                println!("Player {} disconnected", player);
-                broadcast_msg(&clients, GameMessage::Disconnect { player }).await;
-                break;
-            }
-            _ => {}
-        }
-    }*/
-
-    let mut lines = reader.lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        match serde_json::from_str::<GameMessage>(&line) {
-            Ok(msg) => {
-                match msg {
-                    GameMessage::TurnOver { player: msg_player } => {
-                        let current_player = {
-                            let mut server_lock = server.lock().await;
-                            if server_lock.is_current_player(msg_player) {
-                                server_lock.next_turn();
-                                server_lock.get_current_player()
-                            } else {
-                                None
-                            }
-                        };
-                        if let Some(current_player) = current_player {
-                            broadcast_msg(&clients, GameMessage::Turn { player: current_player }).await;
-                        }
-                    }
-                    GameMessage::Something { player: msg_player } => {
-                        broadcast_msg(&clients, GameMessage::Something { player: msg_player }).await;
-                    }
-                    GameMessage::Disconnect { player: msg_player } => {
-                        println!("Player {} disconnected", msg_player);
-                        broadcast_msg(&clients, GameMessage::Disconnect { player: msg_player }).await;
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-            Err(e) => {
-                eprintln!("Player {} sent invalid message: {}", player, e);
-                continue;
-            }
-        };
-    }
-
-    {
-        let mut clients_lock =  clients.lock().await;
-        let mut server_lock = server.lock().await;
-        clients_lock.remove(&player);
-        server_lock.free_slot(player);
-    }
+#[derive(Resource, Debug, Clone, Default)]
+pub struct Users {
+    names: HashMap<ClientId, u8>,
 }
 
-/// Serializes given message in json then writes it
-async fn write_msg<W>(writer: &mut W, msg: &GameMessage) -> tokio::io::Result<()>
-where
-    W: tokio::io::AsyncWriteExt + Unpin,
-{
-    let msg_json = serde_json::to_string(msg)?;
-    writer.write_all(msg_json.as_bytes()).await?;
-    writer.write_all(b"\n").await?;
-    writer.flush().await?;
-    Ok(())
+#[derive(Resource, Default)]
+pub struct ServerPlayers {
+    pub players: HashMap<ClientId, u8>,
+    pub names: HashMap<ClientId, String>,
+    pub next_player_id: u8,
 }
 
-/// Broadcasts message to all connected clients
-async fn broadcast_msg(clients: &Arc<Mutex<HashMap<u8, broadcast::Sender<GameMessage>>>>, msg: GameMessage) {
-    let clients_lock = clients.lock().await;
-    for (_, tx) in clients_lock.iter() {
-        let _ = tx.send(msg.clone());
-    }
-}
 
-/// Starts the server locally (127.0.0.1:8080)
-/// To try: cargo run --bin server 
-/// Run "cargo run --bin client" in new terminal to test if client is connecting correctly
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    println!("Server is running on 127.0.0.1:8080");
-    println!("Lobby created");
+pub fn handle_client_messages(mut server: ResMut<QuinnetServer>, mut state: ResMut<ServerPlayers>) {
 
-    let server = Arc::new(Mutex::new(GameServer::new()));
-    let clients: Arc<Mutex<HashMap<u8, broadcast::Sender<GameMessage>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let endpoint = server.endpoint_mut();
+    endpoint.set_default_channel(0);
 
-    let shutdown_clients = Arc::clone(&clients);
+    for client_id in endpoint.clients() {
+        while let Some(payload) = endpoint.try_receive_payload(client_id, 0) {
+            match bincode::deserialize::<ClientMessage>(&payload) {
 
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.expect("Error setting Ctrl-C handler");
-        println!("\nShutting down server...");
-        
-        let shutdown_msg = GameMessage::ServerCrash;
-        let clients_lock = shutdown_clients.lock().await;
-        for (_, tx) in clients_lock.iter() {
-            let _ = tx.send(shutdown_msg.clone());
-        }
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        std::process::exit(0);
-    });
+                Ok(ClientMessage::Join) => {
+                    let player_id = state.next_player_id;
+                    state.next_player_id += 1;
+                    state.players.insert(client_id, player_id);
 
-    let clients_c = Arc::clone(&clients);
-    let server_c = Arc::clone(&server);
-    
-    tokio::spawn(async move {
-        loop {
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-            let input = input.trim();
+                    let player_name = format!("Player {}", player_id);
+                    state.names.insert(client_id, player_name.clone());
 
-            match input {
-                "start" => {
-                    let mut server_lock = server_c.lock().await;
-                    if !server_lock.game_started {
-                        server_lock.start_game();
-                        
-                        let current_player = server_lock.get_current_player();
-                        drop(server_lock);
-                    
-                        broadcast_msg(&clients_c, GameMessage::GameStart).await;
-                    
-                        if let Some(current_player) = current_player {
-                            broadcast_msg(&clients_c, GameMessage::Turn { player: current_player }).await;
-                        }
-                    } else {
-                        println!("Game has already started.");
+                    let confirmation_message = ServerMessage::Confirmation { player: player_id };
+                    let confirmation_payload = bincode::serialize(&confirmation_message).unwrap();
+                    endpoint.try_send_payload(client_id, confirmation_payload);
+
+                    let join_message = ServerMessage::Join { player: player_id };
+                    let join_payload = bincode::serialize(&join_message).unwrap();
+
+                    for target_client in endpoint.clients() {
+                        endpoint.try_send_payload(target_client, join_payload.clone());
+                    }
+
+                    println!("Player {} joined (ClientId: {})", player_id, client_id);
+                },
+
+                Ok(ClientMessage::Something { player }) => {
+                    let player_id = state.players.get(&client_id).copied().unwrap_or(0);
+                    println!("Player {} did something", player_id);
+
+                    let something_message = ServerMessage::Something { player: player_id };
+                    let something_payload = bincode::serialize(&something_message).unwrap();
+
+                    for target_client in endpoint.clients() {
+                        endpoint.try_send_payload(target_client, something_payload.clone());
                     }
                 },
-                "end" => {
-                    let mut server_lock = server_c.lock().await;
-                    if server_lock.game_started {
-                        server_lock.end_game();
-                        println!("Game ended.");
-                        drop(server_lock);
 
-                        broadcast_msg(&clients_c, GameMessage::GameEnd).await;
-                    } else {
-                        println!("Game has not started yet.")
+                Ok(ClientMessage::ChatMessage { message }) => {
+                    let player_id = state.players.get(&client_id).copied().unwrap_or(0);
+                    let player_name = state.names.get(&client_id).cloned().unwrap_or_else(|| format!("Player {}", player_id));
+                    println!("{} says: {}", player_name, message);
+
+                    let chat_message = ServerMessage::ChatMessage { /*player: player_id*/ message: message.clone() };
+                    let chat_payload = bincode::serialize(&chat_message).unwrap();
+
+                    for target_client in endpoint.clients() {
+                        endpoint.try_send_payload(target_client, chat_payload.clone());
                     }
+                },
+
+                Ok(ClientMessage::Disconnect { .. }) => {
+                    if let Some(player_id) = state.players.remove(&client_id) {
+                        // let player_name = player_names.remove(&client_id).unwrap_or_else(|| format!("Player {}", player_id));
+                        println!("Player {} disconnected", player_id);
+
+                        let disconnect_message = ServerMessage::Disconnect { player: u64::from(player_id) };
+                        let disconnect_payload = bincode::serialize(&disconnect_message).unwrap();
+                        for target_client in endpoint.clients() {
+                            endpoint.try_send_payload(target_client, disconnect_payload.clone())
+                        }
+
+                        let _ = endpoint.disconnect_client(client_id);
+                    }
+                },
+
+                Err(e) => {
+                    println!("Failed to deserialize client message: {:?}", e)
                 }
-                "list players" => {
-                    let mut server_lock = server_c.lock().await;
-                    server_lock.list_players();
-                }
+
                 _ => {}
-            };
-        }
-    });
-    
-    loop {
-        let(mut stream, _) = listener.accept().await?;
-        let s = Arc::clone(&server);
-        let c = Arc::clone(&clients);
-
-        tokio::spawn(async move {
-            let player = s.lock().await.assign_slot();
-
-            match player {
-                Some(id) => handle_client(stream, s, c, id).await,
-                None => {
-                    eprintln!("No available slots");
-                    let _ = stream.shutdown().await;
-                }
             }
-        });
+        }
+
+        std::thread::sleep(Duration::from_millis(16));
     }
+}
+
+pub fn handle_server_events(
+    mut connection_lost_events: MessageReader<ConnectionLostEvent>,
+    mut server: ResMut<QuinnetServer>,
+    mut users: ResMut<Users>,
+) {
+    for client in connection_lost_events.read() {
+        handle_disconnect(server.endpoint_mut(), &mut users, client.id);
+    }
+}
+
+pub fn handle_disconnect(endpoint: &mut Endpoint, users: &mut ResMut<Users>, client_id: ClientId) {
+    
+    if let Some(username) = users.names.remove(&client_id) {
+
+        let disconnect_message = ServerMessage::Disconnect { player: client_id };
+        let disconnect_payload = bincode::serialize(&disconnect_message).unwrap();
+        
+        endpoint
+            .send_group_payload(
+                users.names.keys(),
+                disconnect_payload,
+            )
+            .unwrap();
+        info!("{} disconnected", username);
+    } else {
+        warn!(
+            "Received a Disconnect from an unknown or disconnected client: {}",
+            client_id
+        )
+    }
+}
+
+pub fn start_server(mut server: ResMut<QuinnetServer>) {
+    /*let join_code: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(6)
+        .map(char::from)
+        .collect();
+    */
+    let join_code = "ABC123".to_string();
+    println!("Server started. Join code: {}", join_code);
+
+    let server_addr = bootstrap::host(ConnectionMode::LAN, &join_code);
+    println!("Server address: {:?}", server_addr);
+
+    let _ = server.start_endpoint(
+        ServerEndpointConfiguration {
+            addr_config: EndpointAddrConfiguration::from_ip(Ipv4Addr::new(0, 0, 0, 0), 6000),
+            cert_mode: CertificateRetrievalMode::GenerateSelfSigned {
+                server_hostname: server_addr.to_string(),
+            },
+            defaultables: Default::default(),
+        }
+    );
+    println!("Game server endpoint started on {}", server_addr);
 }

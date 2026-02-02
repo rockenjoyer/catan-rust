@@ -459,18 +459,20 @@ impl Game {
     }
 
     //2d6 rolls
-    pub fn roll_dice(&mut self) -> u8 {
+    pub fn roll_dice(&mut self) -> (u8, bool) {
         let die1 = self.rng.random_range(1..=6);
         let die2 = self.rng.random_range(1..=6);
         let total = die1 + die2;
 
         if total == 7 {
-            self.handle_robber();
+            //discard cards but don't move robber yet
+            self.robbery();
+            (total, true) //signal UI to handle robber movement
+
         } else {
             self.distribute_resources(total);
+            (total, false)
         }
-
-        total
     }
 
     fn distribute_resources(&mut self, dice_roll: u8) {
@@ -498,7 +500,7 @@ impl Game {
 
 
     //first part of a robber turn, takes away half of a players resources if they have too much stuff
-    fn robbery(&mut self) {
+    pub fn robbery(&mut self) {
         //checks for each player if they have more than 7 resources
         for player in &mut self.players {
             if player.resources.values().sum::<u8>() > 7 {
@@ -564,27 +566,12 @@ impl Game {
     }
 
     //second part of a robber turn, moves the robber and allows to steal one resource (this is also the knight dev card)
-    fn handle_knight(&mut self) {
-        //checks for available tiles for the robber
-        let available_tiles: Vec<usize> = self.tiles.iter()
-            .enumerate()
-            //has to move to a new tile
-            .filter(|(idx, _)| *idx != self.robber_tile)
-            .map(|(idx, _)| idx)
-            .collect();
-
-        //prompts the current player to choose a tile
-        let current_player = &self.players[self.current_player];
-        println!("Player {}: Choose a tile to place the robber:", current_player.name);
-        //shows all available tiles
-        for (i, tile) in available_tiles.iter().enumerate() {
-            let tile_resource = &self.tiles[*tile].resource;
-            println!("Option {}: Tile {} with resource {:?}", i + 1, *tile, tile_resource);
+    fn handle_knight(&mut self, chosen_tile: usize, victim_id: usize) {
+        //validate tile is different from current robber tile
+        if chosen_tile == self.robber_tile {
+            println!("Must move robber to a different tile!");
+            return;
         }
-
-        //placeholder untill implemented IO
-        //choses the first available tile for simplicity
-        let chosen_tile = available_tiles[0];
 
         //moves the robber
         self.robber_tile = chosen_tile;
@@ -604,18 +591,12 @@ impl Game {
             println!("No players to rob");
             return;
         }
-
-        //prompts the current player to choose a player
-        println!("Players to rob:");
-        //shows available players
-        for (i, player_id) in robbable_players.iter().enumerate() {
-            let player = &self.players[*player_id];
-            println!("Option {}: Player {}", i + 1, player.name);
+        
+        //validate victim is robbable
+        if !robbable_players.contains(&victim_id) {
+            println!("Invalid victim selection!");
+            return;
         }
-
-        //placeholder untill implemented IO
-        //choses the first available player for simplicity
-        let victim_id = *robbable_players.iter().next().unwrap();
 
         let robbed_player = &mut self.players[victim_id];
 
@@ -643,19 +624,66 @@ impl Game {
         //checks the targeted players Resource HashMap
         if let Some(amount) = robbed_player.resources.get_mut(&stolen_resource) {
             if *amount > 0 {
-                    *amount -= 1; //takes 1 resource from the targeted player
+                *amount -= 1; //takes 1 resource from the targeted player
                  
                 let entry = self.players[self.current_player].resources.entry(stolen_resource).or_insert(0);
                 *entry += 1; //gives 1 resource to the turn player
+
+                println!("Stole {:?} from Player {}", stolen_resource, victim_id);
             }
         }
     }
 
-    fn handle_robber(&mut self) {
-        self.robbery();
-        self.handle_knight();
+    //public method for UI to move robber when rolling 7 (includes robbery/discard phase)
+    pub fn move_robber(&mut self, tile: usize, victim: Option<usize>) -> Result<(), &'static str> {
+        if tile == self.robber_tile {
+            return Err("Must move robber to a different tile");
+        }
+        
+        //move robber
+        self.robber_tile = tile;
+        
+        //steal from victim if provided
+        if let Some(victim_id) = victim {
+            let robber_tile = &self.tiles[self.robber_tile];
+            
+            //validate victim has settlement/city on this tile
+            let robbable_players: HashSet<usize> = robber_tile.vertices.iter()
+                .filter_map(|&vertex_idx| {
+                    self.players.iter()
+                        .find(|p| p.id != self.current_player && 
+                                 (p.settlements.contains(&vertex_idx) || p.cities.contains(&vertex_idx)))
+                        .map(|p| p.id)
+                })
+                .collect();
+            
+            if !robbable_players.contains(&victim_id) {
+                return Err("Invalid victim selection");
+            }
+            
+            //steal random resource
+            let robbed_player = &mut self.players[victim_id];
+            let available_resources: Vec<Resource> = robbed_player.resources
+                .iter()
+                .filter_map(|(resource, &amount)| {
+                    if amount > 0 { Some(*resource) } else { None }
+                })
+                .collect();
+            
+            if !available_resources.is_empty() {
+                let stolen_resource = *available_resources.choose(&mut self.rng).unwrap();
+                if let Some(amount) = robbed_player.resources.get_mut(&stolen_resource) {
+                    if *amount > 0 {
+                        *amount -= 1;
+                        *self.players[self.current_player].resources.entry(stolen_resource).or_insert(0) += 1;
+                        println!("Stole {:?} from Player {}", stolen_resource, victim_id);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
     }
-
 
     //determines the trading ratio of each resource dependent on usable harbors
     pub fn maritime_trade_ratio(&mut self, player_id: usize, resource: Resource) -> u8 {
@@ -792,6 +820,7 @@ impl Game {
         //note last settlement during setup
         if is_setup {
             player.last_setup_settlement = Some(vertex);
+            self.setup_placement += 1;
         }
         Ok(())
     }
@@ -1085,13 +1114,23 @@ impl Game {
 
         match chosen_card.card {
             DevCard::Knight => {
-                let (_tile, _victim) = match input {
+                let (tile, victim) = match input {
                     DevCardInput::Knight { tile, victim } => (tile, victim),
                     _ => return Err("invalid input"),
                 };
 
                 player.knights_played += 1;
-                self.handle_knight();
+
+                //knight card uses handle_knight (no robbery phase, just move robber and steal)
+                if let Some(victim_id) = victim {
+                    self.handle_knight(tile, victim_id);
+                } else {
+                    // No victim - just move robber
+                    if tile != self.robber_tile {
+                        self.robber_tile = tile;
+                    }
+                }
+
                 self.update_largest_army(player_id);
             }
 

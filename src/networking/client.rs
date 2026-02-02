@@ -1,174 +1,209 @@
-use tokio::net::TcpStream;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::Mutex;
-use tokio::time::{sleep, Duration};
-use std::process;
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::time::Duration;
+use std::thread::{self, sleep};
+use std::net::IpAddr;
 
-pub mod message;
-use message::GameMessage;
+use rand::{distr::Alphanumeric, Rng};
+use tokio::sync::mpsc;
 
+use bevy_ecs::system::ResMut;
+use bevy::{
+    prelude::{Commands, Deref, DerefMut, Resource, Res},
+    app::AppExit,
+    ecs::{
+        message::{MessageReader, MessageWriter},
+    },
+};
 
-/// Handles the client connection attempt to the given server
-/// Server here is localhost: 127.0.0.1:8080
-/// 
-/// Sends an outbound request to the server (currently only local connections possible)
-/// If client connection to server is achieved: handles messaging and inputs from client to server
-async fn run_client() -> tokio::io::Result<()> {
-    let stream = TcpStream::connect("127.0.0.1:8080").await?;
-    let (reader, mut writer) = stream.into_split();
-    let mut reader = BufReader::new(reader);
+use bevy_quinnet::{
+    client::{
+        certificate::CertificateVerificationMode,
+        connection::{ClientAddrConfiguration, ConnectionEvent, ConnectionFailedEvent},
+        ClientConnectionConfiguration, QuinnetClient
+    },
+    shared::ClientId,
+};
 
-    let mut lines = reader.lines();
-    let confirmation_line = lines.next_line().await?.unwrap();
-    let confirmation_msg: GameMessage = serde_json::from_str(&confirmation_line)?;
+use crate::networking::protocol::*;
+use crate::networking::bootstrap;
+use crate::networking::config::ConnectionMode;
 
-    let mut assigned_player: Option<u8> = None;
+#[derive(Resource, Debug, Clone, Default)]
+pub struct Users {
+    self_id: ClientId,
+    names: HashMap<ClientId, String>,
+}
 
-    match confirmation_msg {
-        GameMessage::Confirmation { player } => {
-            println!("You are Player {}", player);
-            assigned_player = Some(player);
-        }
-        _ => return Ok(()),
-    };
+#[derive(Resource, Default)]
+pub struct ClientState {
+    pub assigned_player: Option<u8>,
+    pub users: HashMap<u8, String>,
+}
 
-    let is_my_turn = Arc::new(Mutex::new(false));
-    let game_started = Arc::new(Mutex::new(false));
+#[derive(Resource, Deref, DerefMut)]
+pub struct TerminalReceiver(mpsc::Receiver<String>);
 
-    let is_my_turn_c = Arc::clone(&is_my_turn);
-    let game_started_c = Arc::clone(&game_started);
+pub fn on_app_exit(app_exit_events: MessageReader<AppExit>, mut client: ResMut<QuinnetClient>) {
+    let disconnect_message = "disconnected";
+    let disconnect_payload = bincode::serialize(&disconnect_message).unwrap();
 
-    tokio::spawn(async move {
-        while let Ok(Some(line)) = lines.next_line().await {
-            if let Ok(msg) = serde_json::from_str::<GameMessage>(&line) {
-                match msg {
-                    GameMessage::GameStart => {
-                        println!("Game started!");
-                        *game_started_c.lock().await = true;
-                    }
-                    GameMessage::Confirmation { player } => {
-                        assigned_player = Some(player);
-                        println!("You are Player {}", player);
-                    },
-                    GameMessage::Join { player } => {
-                        println!("Player {} joined", player)
-                    },
-                    GameMessage::GameEnd => {
-                        println!("Game ended!");
-                        *game_started_c.lock().await = false;
-                    }
-                    GameMessage::Turn { player } => {
-                        if let Some(assigned_player_value) = assigned_player {
-                            if player == assigned_player_value {
-                                println!("It's your turn");
-                                *is_my_turn_c.lock().await = true;
+    if !app_exit_events.is_empty() {
+        client
+            .connection_mut()
+            .send_payload(disconnect_payload)
+            .unwrap();
+        
+        sleep(Duration::from_secs_f32(0.1));
+    }
+}
+
+pub fn handle_server_messages(mut state: ResMut<ClientState>, mut client: ResMut<QuinnetClient>) {
+
+    let mut client_connection = client.connection_mut();
+
+    while let Some(payload_bytes) = client_connection.try_receive_payload(1) {
+            match bincode::deserialize::<ServerMessage>(&payload_bytes) {
+                Ok(msg) => {
+                    match msg {
+                        ServerMessage::Confirmation { player } => {
+                            state.assigned_player = Some(player);
+                            state.users.insert(player, format!("Player {}", player));                
+                            
+                            println!("You are Player {}", player);
+                        },
+                        ServerMessage::GameStart => {
+                            println!("Game started");
+                        },
+                        ServerMessage::Turn { player } => {
+                            if Some(player) == state.assigned_player {
+                                println!("Your turn");
                             } else {
-                                println!("It's Player {}'s turn", player);
-                                *is_my_turn_c.lock().await = false;
+                                println!("Player {}'s turn", player);
                             }
-                        }
-                    },
-                    GameMessage::TurnOver { player } => {
-                        println!("Player {} finished their turn", player)
-                    },
-                    GameMessage::Something { player } => {
-                        println!("Player {} did something", player)
-                    },
-                    GameMessage::Disconnect { player } => {
-                        println!("Player {} disconnected", player)
-                    },
-                    GameMessage::ServerCrash => {
-                        eprintln!("Connection to server lost. Disconnecting...");
-                        process::exit(0);
-                        //eprintln!("If you haven't been disconnected yet, press: Ctrl + C to do so immeadietly");
+                        },
+                        ServerMessage::ServerCrash => {
+                            eprintln!("Server crashed");
+                            return;
+                        },
+                        ServerMessage::ChatMessage { message } => {
+                            //let player_name = users.get(&player).unwrap_or(&format!("Player {}", player)).to_string();
+                            println!("> {}", message);
+
+                        },
+                        ServerMessage::ClientConnected { player } => {
+                            state.users.insert(player, format!("Player {}", player));
+                            println!("Player {} joined", player);
+                        },
+                        ServerMessage::ClientDisconnected { player } => {
+                            if let Some(player_name) = state.users.remove(&player) {
+                                println!("{} left", player_name);
+                            } else {
+                                println!("Player {} left", player);
+                            }
+                        },
+                        _ => {}
                     }
-                    _ => {}
+                },
+                Err(e) => {
+                    eprintln!("Failed to deserialize server message: {:?}", e);
                 }
+            }
+    }
+}
+
+pub fn handle_terminal_messages(
+    mut terminal_messages: ResMut<TerminalReceiver>,
+    mut app_exit_events: MessageWriter<AppExit>,
+    mut client: ResMut<QuinnetClient>,
+    state: Res<ClientState>,
+) {
+    while let Ok(message) = terminal_messages.try_recv() {
+        match message.as_str() {
+            
+            "quit" => {
+                let msg = ClientMessage::Disconnect;
+                let payload = bincode::serialize(&msg).unwrap();
+                client.connection_mut().try_send_payload(payload);
+                app_exit_events.write(AppExit::Success);
+            }
+            other => {
+                let msg = ClientMessage::ChatMessage { message: other.to_string() };
+                let payload = bincode::serialize(&msg).unwrap();
+                client.connection_mut().try_send_payload(payload);
+            }
+        }
+    }
+}
+
+pub fn start_terminal_listener(mut commands: Commands) {
+    let (from_terminal_sender, from_terminal_receiver) = mpsc::channel::<String>(100);
+
+    thread::spawn(move || loop {
+        let mut buffer = String::new();
+        if std::io::stdin().read_line(&mut buffer).is_ok() {
+            let input = buffer.trim_end().to_string();
+            if !input.is_empty() {
+                from_terminal_sender
+                .try_send(buffer.trim_end().to_string())
+                .unwrap();
             }
         }
     });
 
-    loop {
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input).unwrap();
-        let input = input.trim();
+    commands.insert_resource(TerminalReceiver(from_terminal_receiver));
+}
 
-        if let Some(assigned_player_value) = assigned_player {
-            let is_my_turn_lock = is_my_turn.lock().await;
-            let game_started_lock = game_started.lock().await;
-        
-            match input {
-                "disconnect" => {
-                    if let Err(e) = write_msg(&mut writer, &GameMessage::Disconnect { player: assigned_player_value }).await {
-                        eprintln!("Failed to send 'disconnect' message: {}", e);
-                    }
-                    break;
-                }
-                "help" => {
-                    println!("Available commands: ");
-                    println!("If it's your turn: 'do something' or 'finished'");
-                    println!("Otherwise: 'disconnect'");
-                    continue;
-                }
-                "status" => {
-                    println!("Game hasn't started yet. Wait for the host to start the game.");
-                    continue;
-                }
-                _ => {}
-            }
+pub fn handle_client_events(
+    mut connection_events: MessageReader<ConnectionEvent>,
+    mut connection_failed_events: MessageReader<ConnectionFailedEvent>,
+    mut client: ResMut<QuinnetClient>,
+) {
+    if !connection_events.is_empty() {
 
-            if *game_started_lock {
-                match input {
-                    "status" => {
-                        println!("Game has started. You're player {}", assigned_player_value);
-                    }
-                    _ => {}
-                }       
-            } else {
-                println!("Game has not started yet. Wait for the game to start.");
-                continue;
-            }
+        let username: String = rand::rng()
+            .sample_iter(&Alphanumeric)
+            .take(7)
+            .map(char::from)
+            .collect();
 
-            if *is_my_turn_lock {
-                match input {
-                    "finished" => {
-                        if let Err(e) = write_msg(&mut writer, &GameMessage::TurnOver { player: assigned_player_value }).await {
-                            eprintln!("Failed to send 'turn over' message: {}", e);
-                        }
-                        continue;
-                    }
-                    "do something" => {
-                        if let Err(e) = write_msg(&mut writer, &GameMessage::Something { player: assigned_player_value }).await {
-                            eprintln!("Failed to send 'do something' message: {}", e);
-                        }
-                        continue;
-                    }
-                    _ => println!("Invalid command; try 'help'")
-                }       
-            } else {
-                println!("It's not your turn.");
-                continue;
-            }
-        }
+        println!("--- Joining with name: {}", username);
+        println!("--- Type 'quit' to disconnect");
+
+        let join_message = ClientMessage::Join;
+        let join_payload = bincode::serialize(&join_message).unwrap();
+
+        client
+            .connection_mut()
+            .send_payload(join_payload)
+            .unwrap();
+
+        connection_events.clear();
     }
-
-    Ok(())
+    for ev in connection_failed_events.read() {
+        println!(
+            "Failed to connect: {:?}, make sure the chat-server is running.",
+            ev.err
+        );
+    }
 }
 
-async fn write_msg<W>(writer: &mut W, msg: &GameMessage) -> tokio::io::Result<()>
-where
-    W: tokio::io::AsyncWriteExt + Unpin,
-{
-    let msg_json = serde_json::to_string(msg)?;
-    writer.write_all(msg_json.as_bytes()).await?;
-    writer.write_all(b"\n").await?;
-    writer.flush().await?;
-    Ok(())
-}
-/// To try: cargo run --bin client (only if server is running in another terminal)
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    run_client().await?;
-    Ok(())
+pub fn start_connection(mut client: ResMut<QuinnetClient>) {
+    let join_code = std::env::args().nth(1).expect("join code");
+    println!("Attempting to join with code: {}", join_code);
+
+    let server_addr = bootstrap::join(ConnectionMode::LOCAL, &join_code);
+    println!("Game server address obtained: {}", server_addr);
+
+    let _ = client.open_connection(ClientConnectionConfiguration {
+        addr_config: ClientAddrConfiguration::from_ips(
+            server_addr.ip(),
+            server_addr.port(),
+            "0.0.0.0".parse::<IpAddr>().unwrap(),
+            0,
+        ),
+        cert_mode: CertificateVerificationMode::SkipVerification,
+        defaultables: Default::default(),
+    });
+
+    println!("Client attempting to connect to server at {}", server_addr);
 }

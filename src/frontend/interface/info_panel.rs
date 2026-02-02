@@ -1,44 +1,56 @@
+use crate::backend::game::Game;
+use crate::frontend::interface::style::apply_style;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use crate::frontend::interface::style::apply_style;
+pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>) {
+    let game = game.borrow();
 
-pub fn setup_info(mut context: EguiContexts) {
     if let Ok(context) = context.ctx_mut() {
-        //info window top
         apply_style(context);
-        egui::Window::new("The Settlers of Catan")
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
-                    .corner_radius(egui::CornerRadius::same(15)),
-            )
+
+        let default_size = (500.0, 70.0);
+
+        //info window
+        egui::Window::new("Current Round Info")
+            .frame(window_frame())
+            .order(egui::Order::Foreground)
             .resizable(false)
             .collapsible(false)
             .anchor(egui::Align2::CENTER_TOP, (0.0, 0.0))
-            .default_size((1300.0, 200.0))
-            //display content
+            .default_size(default_size)
             .show(context, |ui| {
-                ui.label("Welcome to Catan - safely implemented in Rust! Good luck and have fun!");
-            });
+                let current = &game.players[game.current_player];
 
-        //info window bottom
-        egui::Window::new("Current Round Info")
-            .frame(
-                egui::Frame::new()
-                    .fill(egui::Color32::from_hex("#d4c1b1ff").unwrap())
-                    .corner_radius(egui::CornerRadius::same(15)),
-            )
-            .resizable(false)
-            .collapsible(false)
-            .anchor(egui::Align2::CENTER_BOTTOM, (0.0, 0.0))
-            .default_size((1300.0, 200.0))
-            //display content
-            .show(context, |ui| {
-                ui.label(format!("Current Player: "));
-                ui.label(format!("Resources: "));
+                ui.label(format!("Current Player: {} (VP: {})", current.name, current.victory_points));
 
-                //TO-DO: more info to be added later
+                ui.horizontal(|ui| {
+                    ui.label(format!("Resources: "));
+                    for (resource, &amount) in &current.resources {
+                        if amount > 0 {
+                            ui.label(format!("{:?}: {}", resource, amount));
+                        }
+                    }
+                });
+
+                ui.separator();
+
+                ui.label(format!("Settlements: {} | Cities: {} | Roads: {}",
+                    current.settlements.len(),
+                    current.cities.len(),
+                    current.roads.len()
+                ));
             });
     }
+}
+
+fn window_frame() -> egui::Frame {
+    egui::Frame::NONE
+        .fill(egui::Color32::from_black_alpha(150))
+        .stroke(egui::Stroke::new(1.0, egui::Color32::from_white_alpha(100)))
+        .inner_margin(10.0)
+        .outer_margin(0.0)
+        .corner_radius(egui::CornerRadius::same(15))
 }
