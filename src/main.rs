@@ -1,4 +1,6 @@
 use bevy::prelude::*;
+use bevy_quinnet::client::QuinnetClientPlugin;
+use bevy_quinnet::server::QuinnetServerPlugin;
 
 use std::cell::RefCell; //shared ownership pointer for the data that is thread-unsafe (RNG inside game.rs)
 use std::rc::Rc; //mutability for "Game" while using Rc
@@ -16,5 +18,7 @@ fn main() {
         .insert_non_send_resource(game)
         //our defined frontend plugin for UI
         .add_plugins(FrontendPlugin)
+        //.add_plugins(QuinnetClientPlugin::default())
+        //.add_plugins(QuinnetServerPlugin::default())
         .run();
 }

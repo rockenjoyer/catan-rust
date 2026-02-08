@@ -3,16 +3,26 @@ use bevy::window::{Window, WindowMode};
 use bevy_egui::EguiPlugin;
 use bevy_kira_audio::prelude::*;
 
+use bevy_quinnet::client::QuinnetClientPlugin;
+use bevy_quinnet::server::QuinnetServerPlugin;
+
 use crate::frontend::interface::{
-    game_panel, info_panel, settings_panel, log_panel, main_menu,
+    game_panel, info_panel, settings_panel, log_panel, main_menu, multiplayer_menu,
 };
-use crate::frontend::system::{audio, camera};
+use crate::frontend::system::{audio, camera, multiplayer::handle_multiplayer_action};
 use crate::frontend::visual::{cards, city, road, settlement, tile, dice, startscreen};
+
+use crate::backend::networking::rendezvous::RendezvousServer;
+use crate::backend::networking::server::{handle_client_messages, handle_server_events, start_server};
+use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
     #[default]
     MainMenu,
+    MultiplayerMenu,
+    Hosting,
+    Joining,
     InGame,
 }
 
@@ -37,8 +47,15 @@ impl Plugin for FrontendPlugin {
             //audio plugin for background music
             .add_plugins(AudioPlugin::default())
 
+            //add quinnet plugins for client and server
+            .add_plugins(QuinnetClientPlugin::default())
+            .add_plugins(QuinnetServerPlugin::default())
+
             //state management
             .init_state::<GameState>()
+
+            //event observer for multiplayer
+            .add_observer(handle_multiplayer_action)
 
             //startup runs once
             .add_systems(
@@ -59,6 +76,7 @@ impl Plugin for FrontendPlugin {
             .insert_resource(log_panel::GameLog::default())
             .insert_resource(audio::AudioState::default())
             .insert_resource(main_menu::MainMenuState::default())
+            .insert_resource(multiplayer_menu::MultiplayerMenuState::default())
             
             //main menu systems
             .add_systems(
@@ -69,6 +87,12 @@ impl Plugin for FrontendPlugin {
                     main_menu::setup_main_menu,
                     settings_panel::setup_settings,
                 ).run_if(in_state(GameState::MainMenu)),
+            )
+            //multiplayer menu system
+            .add_systems(
+                bevy_egui::EguiPrimaryContextPass,
+                multiplayer_menu::setup_multiplayer_menu
+                    .run_if(in_state(GameState::MultiplayerMenu)),
             )
             //egui pass: texture loading and UI systems
             .add_systems(
@@ -87,6 +111,29 @@ impl Plugin for FrontendPlugin {
                     settings_panel::setup_settings,
                     log_panel::setup_log_panel,
                 ).run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                OnEnter(GameState::Hosting),
+                start_server,
+            )
+            .add_systems(
+                Update,
+                (handle_server_events)
+                    .run_if(in_state(GameState::Hosting)),
+            )
+            .add_systems(
+                Update,
+                (handle_client_messages)
+                    .run_if(in_state(GameState::Hosting))
+            )
+            .add_systems(
+                OnEnter(GameState::Joining),
+                start_connection,
+            )
+            .add_systems(
+                Update,
+                (handle_client_events, handle_server_messages, handle_terminal_messages)
+                    .run_if(in_state(GameState::Joining)),
             );
     }
 }

@@ -2,14 +2,15 @@ use bevy::prelude::*;
 use bevy::log::LogPlugin;
 use bevy::app::ScheduleRunnerPlugin;
 use bevy_quinnet::server::QuinnetServerPlugin;
-use catan_rust::networking::{
+use catan_rust::backend::networking::{
     server::{
         handle_client_messages, handle_server_events,
-        start_server, Users, ServerPlayers
-    }
+        start_server, ServerPlayers
+    },
+    client::Users,
 };
 
-fn main() {
+fn start_server() {
     App::new()
         .add_plugins((
             ScheduleRunnerPlugin::default(),

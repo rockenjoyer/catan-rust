@@ -10,9 +10,7 @@ use bevy_ecs::system::ResMut;
 use bevy::{
     prelude::{Commands, Deref, DerefMut, Resource, Res},
     app::AppExit,
-    ecs::{
-        message::{MessageReader, MessageWriter},
-    },
+    ecs::message::{MessageReader, MessageWriter},
 };
 
 use bevy_quinnet::{
@@ -24,9 +22,14 @@ use bevy_quinnet::{
     shared::ClientId,
 };
 
-use crate::networking::protocol::*;
-use crate::networking::bootstrap;
-use crate::networking::config::ConnectionMode;
+use crate::backend::networking::protocol::*;
+use crate::backend::networking::bootstrap;
+use crate::backend::networking::config::ConnectionMode;
+
+#[derive(Resource, Clone)]
+pub struct PendingJoin {
+    pub join_code: String,
+}
 
 #[derive(Resource, Debug, Clone, Default)]
 pub struct Users {
@@ -43,7 +46,10 @@ pub struct ClientState {
 #[derive(Resource, Deref, DerefMut)]
 pub struct TerminalReceiver(mpsc::Receiver<String>);
 
-pub fn on_app_exit(app_exit_events: MessageReader<AppExit>, mut client: ResMut<QuinnetClient>) {
+pub fn on_app_exit(
+    app_exit_events: MessageReader<AppExit>,
+    mut client: ResMut<QuinnetClient>,
+) {
     let disconnect_message = "disconnected";
     let disconnect_payload = bincode::serialize(&disconnect_message).unwrap();
 
@@ -52,62 +58,56 @@ pub fn on_app_exit(app_exit_events: MessageReader<AppExit>, mut client: ResMut<Q
             .connection_mut()
             .send_payload(disconnect_payload)
             .unwrap();
-        
+
         sleep(Duration::from_secs_f32(0.1));
     }
 }
 
-pub fn handle_server_messages(mut state: ResMut<ClientState>, mut client: ResMut<QuinnetClient>) {
-
+pub fn handle_server_messages(
+    mut state: ResMut<ClientState>,
+    mut client: ResMut<QuinnetClient>,
+) {
     let mut client_connection = client.connection_mut();
 
     while let Some(payload_bytes) = client_connection.try_receive_payload(1) {
-            match bincode::deserialize::<ServerMessage>(&payload_bytes) {
-                Ok(msg) => {
-                    match msg {
-                        ServerMessage::Confirmation { player } => {
-                            state.assigned_player = Some(player);
-                            state.users.insert(player, format!("Player {}", player));                
-                            
-                            println!("You are Player {}", player);
-                        },
-                        ServerMessage::GameStart => {
-                            println!("Game started");
-                        },
-                        ServerMessage::Turn { player } => {
-                            if Some(player) == state.assigned_player {
-                                println!("Your turn");
-                            } else {
-                                println!("Player {}'s turn", player);
-                            }
-                        },
-                        ServerMessage::ServerCrash => {
-                            eprintln!("Server crashed");
-                            return;
-                        },
-                        ServerMessage::ChatMessage { message } => {
-                            //let player_name = users.get(&player).unwrap_or(&format!("Player {}", player)).to_string();
-                            println!("> {}", message);
-
-                        },
-                        ServerMessage::ClientConnected { player } => {
-                            state.users.insert(player, format!("Player {}", player));
-                            println!("Player {} joined", player);
-                        },
-                        ServerMessage::ClientDisconnected { player } => {
-                            if let Some(player_name) = state.users.remove(&player) {
-                                println!("{} left", player_name);
-                            } else {
-                                println!("Player {} left", player);
-                            }
-                        },
-                        _ => {}
-                    }
-                },
-                Err(e) => {
-                    eprintln!("Failed to deserialize server message: {:?}", e);
+        match bincode::deserialize::<ServerMessage>(&payload_bytes) {
+            Ok(msg) => match msg {
+                ServerMessage::Confirmation { player } => {
+                    state.assigned_player = Some(player);
+                    state.users.insert(player, format!("Player {}", player));
+                    println!("You are Player {}", player);
                 }
+                ServerMessage::GameStart => {
+                    println!("Game started");
+                }
+                ServerMessage::Turn { player } => {
+                    if Some(player) == state.assigned_player {
+                        println!("Your turn");
+                    } else {
+                        println!("Player {}'s turn", player);
+                    }
+                }
+                ServerMessage::ServerCrash => {
+                    eprintln!("Server crashed");
+                }
+                ServerMessage::ChatMessage { message } => {
+                    println!("> {}", message);
+                }
+                ServerMessage::ClientConnected { player } => {
+                    state.users.insert(player, format!("Player {}", player));
+                    println!("Player {} joined", player);
+                }
+                ServerMessage::ClientDisconnected { player } => {
+                    if let Some(name) = state.users.remove(&player) {
+                        println!("{} left", name);
+                    }
+                }
+                _ => {}
+            },
+            Err(e) => {
+                eprintln!("Failed to deserialize server message: {:?}", e);
             }
+        }
     }
 }
 
@@ -115,11 +115,10 @@ pub fn handle_terminal_messages(
     mut terminal_messages: ResMut<TerminalReceiver>,
     mut app_exit_events: MessageWriter<AppExit>,
     mut client: ResMut<QuinnetClient>,
-    state: Res<ClientState>,
+    _state: Res<ClientState>,
 ) {
     while let Ok(message) = terminal_messages.try_recv() {
         match message.as_str() {
-            
             "quit" => {
                 let msg = ClientMessage::Disconnect;
                 let payload = bincode::serialize(&msg).unwrap();
@@ -127,7 +126,9 @@ pub fn handle_terminal_messages(
                 app_exit_events.write(AppExit::Success);
             }
             other => {
-                let msg = ClientMessage::ChatMessage { message: other.to_string() };
+                let msg = ClientMessage::ChatMessage {
+                    message: other.to_string(),
+                };
                 let payload = bincode::serialize(&msg).unwrap();
                 client.connection_mut().try_send_payload(payload);
             }
@@ -136,21 +137,19 @@ pub fn handle_terminal_messages(
 }
 
 pub fn start_terminal_listener(mut commands: Commands) {
-    let (from_terminal_sender, from_terminal_receiver) = mpsc::channel::<String>(100);
+    let (tx, rx) = mpsc::channel::<String>(100);
 
     thread::spawn(move || loop {
         let mut buffer = String::new();
         if std::io::stdin().read_line(&mut buffer).is_ok() {
-            let input = buffer.trim_end().to_string();
+            let input = buffer.trim().to_string();
             if !input.is_empty() {
-                from_terminal_sender
-                .try_send(buffer.trim_end().to_string())
-                .unwrap();
+                tx.try_send(input).unwrap();
             }
         }
     });
 
-    commands.insert_resource(TerminalReceiver(from_terminal_receiver));
+    commands.insert_resource(TerminalReceiver(rx));
 }
 
 pub fn handle_client_events(
@@ -159,7 +158,6 @@ pub fn handle_client_events(
     mut client: ResMut<QuinnetClient>,
 ) {
     if !connection_events.is_empty() {
-
         let username: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(7)
@@ -172,26 +170,24 @@ pub fn handle_client_events(
         let join_message = ClientMessage::Join;
         let join_payload = bincode::serialize(&join_message).unwrap();
 
-        client
-            .connection_mut()
-            .send_payload(join_payload)
-            .unwrap();
-
+        client.connection_mut().send_payload(join_payload).unwrap();
         connection_events.clear();
     }
+
     for ev in connection_failed_events.read() {
-        println!(
-            "Failed to connect: {:?}, make sure the chat-server is running.",
-            ev.err
-        );
+        println!("Failed to connect: {:?}", ev.err);
     }
 }
 
-pub fn start_connection(mut client: ResMut<QuinnetClient>) {
-    let join_code = std::env::args().nth(1).expect("join code");
+pub fn start_connection(
+    mut client: ResMut<QuinnetClient>,
+    pending: Res<PendingJoin>,
+) {
+    let join_code = &pending.join_code;
+
     println!("Attempting to join with code: {}", join_code);
 
-    let server_addr = bootstrap::join(ConnectionMode::LOCAL, &join_code);
+    let server_addr = bootstrap::join(ConnectionMode::LOCAL, join_code);
     println!("Game server address obtained: {}", server_addr);
 
     let _ = client.open_connection(ClientConnectionConfiguration {

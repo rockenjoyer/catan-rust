@@ -75,7 +75,7 @@ pub fn setup_main_menu(
 
                 ui.add_space(15.0);
 
-                //multiplayer settings button
+                //multiplayer menu button
                 if ui
                     .add_sized(
                         button_size,
@@ -83,7 +83,7 @@ pub fn setup_main_menu(
                     )
                     .clicked()
                 {
-                    menu_state.show_multiplayer_settings = !menu_state.show_multiplayer_settings;
+                    next_state.set(GameState::MultiplayerMenu);
                 }
 
                 ui.add_space(15.0);

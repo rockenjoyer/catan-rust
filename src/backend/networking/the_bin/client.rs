@@ -3,7 +3,7 @@ use bevy::log::LogPlugin;
 use bevy::app::ScheduleRunnerPlugin;
 use bevy_quinnet::client::QuinnetClientPlugin;
 //use bevy_quinnet::client::client_connected;
-use catan_rust::networking::{
+use catan_rust::backend::networking::{
     client::{
         start_terminal_listener, start_connection,
         handle_client_events, handle_terminal_messages,
@@ -11,7 +11,7 @@ use catan_rust::networking::{
     }
 };
 
-fn main() {
+fn start_client() {
     App::new()
         .add_plugins((
             ScheduleRunnerPlugin::default(),

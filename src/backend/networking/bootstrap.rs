@@ -2,8 +2,8 @@ use std::net::{UdpSocket, SocketAddr, IpAddr};
 use std::time::{Duration, Instant};
 use std::thread::sleep;
 
-use crate::networking::config::ConnectionMode;
-use crate::networking::stun_request;
+use crate::backend::networking::config::ConnectionMode;
+use crate::backend::networking::stun_request;
 
 pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
     let rendezvous_addr: SocketAddr = mode.rendezvous_addr();
