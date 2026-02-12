@@ -1,16 +1,13 @@
 use bevy::prelude::*;
-use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::{egui, EguiContexts};
 
 use crate::frontend::bevy::GameState;
 use crate::frontend::interface::style::apply_style;
-use crate::frontend::visual::startscreen::{StartscreenTexture, draw_background, LogoTexture};
+use crate::frontend::visual::startscreen::{draw_background, LogoTexture, StartscreenTexture};
 
 #[derive(Resource, Default)]
 pub struct MainMenuState {
-    pub show_credits: bool,
     pub show_rules: bool,
-    pub show_window_settings: bool,
     pub show_multiplayer_settings: bool,
 }
 
@@ -21,7 +18,6 @@ pub fn setup_main_menu(
     background: Option<Res<StartscreenTexture>>,
     logo_image: Option<Res<LogoTexture>>,
     mut menu_state: ResMut<MainMenuState>,
-    mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     let Some(background) = background else {
         return;
@@ -39,28 +35,8 @@ pub fn setup_main_menu(
 
             //draw UI
             ui.vertical_centered(|ui| {
-
-                //scale the buttons like the logo
-                let available_size = ui.available_size();
-                let base_size = egui::vec2(2048.0, 1152.0);
-
-                let scale = (available_size.x / base_size.x)
-                    .min(available_size.y / base_size.y)
-                    .clamp(0.2, 1.0);
-
-                //calculate top space for the header logo
-                let top_space = (450.0 * scale).min(420.0);
-
-                ui.add_space(top_space);
-
-                //change button width and height based on screen size
-                let button_width = (300.0 * scale).clamp(100.0, 340.0);
-                let button_height = (80.0 * scale).clamp(25.0, 70.0);
-
-                let button_size = egui::vec2(button_width, button_height);
-                let font_size = (20.0 * scale).clamp(12.0, 22.0);
-
                 button_style(ui);
+                let (button_size, font_size) = scaling(ui);
 
                 //start game button
                 if ui
@@ -101,28 +77,15 @@ pub fn setup_main_menu(
 
                 ui.add_space(15.0);
 
-                //window settings button
+                //temporary entry point to the endscreen UI
                 if ui
                     .add_sized(
                         button_size,
-                        egui::Button::new(egui::RichText::new("Window Settings").size(font_size)),
+                        egui::Button::new(egui::RichText::new("Endscreen Test").size(font_size)),
                     )
                     .clicked()
                 {
-                    menu_state.show_window_settings = !menu_state.show_window_settings;
-                }
-
-                ui.add_space(15.0);
-
-                //credits button
-                if ui
-                    .add_sized(
-                        button_size,
-                        egui::Button::new(egui::RichText::new("Credits").size(font_size)),
-                    )
-                    .clicked()
-                {
-                    menu_state.show_credits = !menu_state.show_credits;
+                    next_state.set(GameState::EndScreen);
                 }
 
                 ui.add_space(15.0);
@@ -140,11 +103,6 @@ pub fn setup_main_menu(
             });
         });
 
-        //credits panel
-        if menu_state.show_credits {
-            show_credits(context, &mut menu_state.show_credits);
-        }
-
         //multiplayer settings panel
         if menu_state.show_multiplayer_settings {
             show_multiplayer_settings(context, &mut menu_state.show_multiplayer_settings);
@@ -154,57 +112,22 @@ pub fn setup_main_menu(
         if menu_state.show_rules {
             show_rules(context, &mut menu_state.show_rules);
         }
-
-        //window settings panel
-        if menu_state.show_window_settings {
-            if let Ok(mut window) = windows.single_mut() {
-                show_window_settings(context, &mut menu_state.show_window_settings, &mut window);
-            }
-        }
     }
 }
 
 fn show_multiplayer_settings(ctx: &egui::Context, show: &mut bool) {
     egui::Window::new("Multiplayer Settings")
-    .open(show)
-        .collapsible(false)
-        .default_size(egui::vec2(700.0, 300.0))
-        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-        .show(ctx, |ui| {
-            window_frame()
-                .show(ui, |ui| {
-                    ui.vertical_centered(|ui| {
-                        ui.label(egui::RichText::new("Local...").strong().size(25.0));
-                        ui.label("To be implemented");
-                    });
-                });
-        });
-}
-
-fn show_credits(ctx: &egui::Context, show: &mut bool) {
-    egui::Window::new("Credits")
         .open(show)
         .collapsible(false)
         .default_size(egui::vec2(700.0, 300.0))
         .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
         .show(ctx, |ui| {
-            window_frame()
-                .show(ui, |ui| {
-                    ui.vertical_centered(|ui| {
-                        ui.label(egui::RichText::new("Development").strong().size(25.0));
-                        ui.label("Antonio | Roman | Vojin | Laura");
-
-                        ui.add_space(15.0);
-
-                        ui.label(egui::RichText::new("Built with").strong().size(25.0));
-                        ui.label("Bevy Engine | Rust Programming Language");
-
-                        ui.add_space(15.0);
-
-                        ui.label(egui::RichText::new("Original Game").strong().size(25.0));
-                        ui.label("The Settlers of Catan | by Klaus Teuber");
-                    });
+            window_frame().show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new("Local...").strong().size(25.0));
+                    ui.label("To be implemented");
                 });
+            });
         });
 }
 
@@ -264,105 +187,9 @@ fn show_rules(ctx: &egui::Context, show: &mut bool) {
         });
 }
 
-fn show_window_settings(ctx: &egui::Context, show: &mut bool, window: &mut Window) {
-    egui::Window::new("Window Settings")
-        .open(show)
-        .default_size(egui::vec2(700.0, 400.0))
-        .collapsible(false)
-        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-        .show(ctx, |ui| {
-            window_frame()
-                .show(ui, |ui| {
-                    ui.vertical_centered(|ui| {
-                        button_style(ui);
-                        ui.add_space(10.0);
-
-                        //space for window mode settings
-                ui.label(egui::RichText::new("Window Mode").strong().size(24.0));
-                ui.add_space(10.0);
-
-                ui.horizontal(|ui| {
-                    ui.add_space(50.0);
-                    let current_mode = window.mode;
-
-                    //add window mode selection buttons: windowed and borderless fullscreen
-                    if ui
-                        .selectable_label(
-                            matches!(current_mode, WindowMode::Windowed),
-                            egui::RichText::new("Windowed").size(18.0),
-                        )
-                        .clicked()
-                    {
-                        window.mode = WindowMode::Windowed;
-                    }
-
-                    ui.add_space(20.0);
-
-                    if ui
-                        .selectable_label(
-                            matches!(current_mode, WindowMode::BorderlessFullscreen(_)),
-                            egui::RichText::new("Borderless Fullscreen").size(18.0),
-                        )
-                        .clicked()
-                    {
-                        window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
-                    }
-
-                    ui.add_space(20.0);
-
-                    if ui
-                        .selectable_label(
-                            matches!(current_mode, WindowMode::Fullscreen(_, _)),
-                            egui::RichText::new("Fullscreen").size(18.0),
-                        )
-                        .clicked()
-                    {
-                        window.mode = WindowMode::Fullscreen(MonitorSelection::Current, VideoModeSelection::Current);
-                    }
-                });
-
-                ui.add_space(20.0);
-
-                //space for window resolution settings
-                ui.label(egui::RichText::new("Window Resolution").strong().size(24.0));
-                ui.add_space(10.0);
-
-                let resolutions = vec![
-                    ("1280 x 720", 1280.0, 720.0),
-                    ("1920 x 1080", 1920.0, 1080.0),
-                    ("2560 x 1440", 2560.0, 1440.0),
-                ];
-
-                //add resolution buttons
-                for (label, width, height) in resolutions {
-                    ui.horizontal(|ui| {
-                        ui.add_space(150.0);
-                        if ui.button(egui::RichText::new(label).size(18.0)).clicked() {
-                            window.resolution.set(width, height);
-                        }
-                    });
-                    ui.add_space(8.0);
-                }
-
-                ui.add_space(20.0);
-
-                //display current resolution
-                ui.label(
-                    egui::RichText::new(format!(
-                        "Current: {} x {}",
-                        window.resolution.width(),
-                        window.resolution.height()
-                    ))
-                    .size(16.0),
-                );
-                    });
-                });
-        });
-}
-
 fn window_frame() -> egui::Frame {
     egui::Frame::NONE
-        .fill(egui::Color32::from_hex("#52322aea").unwrap())
+        .fill(egui::Color32::from_hex("#724235ec").unwrap())
         .stroke(egui::Stroke::new(
             2.0,
             egui::Color32::from_hex("#331812").unwrap(),
@@ -374,6 +201,7 @@ fn window_frame() -> egui::Frame {
 fn button_style(ui: &mut egui::Ui) {
     let button_color = egui::Color32::from_hex("#724235ec").unwrap();
     let outline_color = egui::Color32::from_hex("#3e211a").unwrap();
+    let selected_color = egui::Color32::from_hex("#724235ec").unwrap();
 
     ui.style_mut().visuals.widgets.inactive.weak_bg_fill = button_color;
     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = button_color;
@@ -382,4 +210,30 @@ fn button_style(ui: &mut egui::Ui) {
     ui.style_mut().visuals.widgets.inactive.bg_stroke = egui::Stroke::new(3.0, outline_color);
     ui.style_mut().visuals.widgets.hovered.bg_stroke = egui::Stroke::new(3.0, outline_color);
     ui.style_mut().visuals.widgets.active.bg_stroke = egui::Stroke::new(3.0, outline_color);
+
+    ui.style_mut().visuals.selection.bg_fill = selected_color;
+    ui.style_mut().visuals.selection.stroke = egui::Stroke::new(3.0, outline_color);
+}
+
+fn scaling(ui: &mut egui::Ui) -> (egui::Vec2, f32) {
+    //scale the buttons like the logo
+    let available_size = ui.available_size();
+    let base_size = egui::vec2(2048.0, 1152.0);
+
+    let scale = (available_size.x / base_size.x)
+        .min(available_size.y / base_size.y)
+        .clamp(0.2, 1.0);
+
+    //calculate top space for the header logo
+    let top_space = (500.0 * scale).min(420.0);
+
+    ui.add_space(top_space);
+
+    //change button width and height based on screen size
+    let button_width = (300.0 * scale).clamp(100.0, 340.0);
+    let button_height = (80.0 * scale).clamp(25.0, 70.0);
+
+    let button_size = egui::vec2(button_width, button_height);
+    let font_size = (20.0 * scale).clamp(12.0, 22.0);
+    (button_size, font_size)
 }

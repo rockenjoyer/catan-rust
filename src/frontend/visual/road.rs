@@ -117,8 +117,36 @@ fn draw_road(
     //calculate the angle in radians
     let angle = dir.y.atan2(dir.x);
 
+    let road_texture = select_road_texture(road_textures, player_id, angle);
+
+    //define road rectangle
+    let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0));
+
+    //draw the shadow
+    painter.image(
+        road_texture.id(),
+        rect.translate(egui::vec2(0.0, 5.0)),
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::from_black_alpha(120),
+    );
+
+    //draw the road itself with player color tint
+    painter.image(
+        road_texture.id(),
+        rect,
+        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+        egui::Color32::WHITE,
+    );
+}
+
+//helper function to choose the tile texture color
+pub fn select_road_texture(
+    road_textures: &RoadTextures,
+    player_id: usize,
+    angle: f32,
+) -> &egui::TextureHandle {
     //select texture based on the angle
-    let road_texture = match angle.rem_euclid(std::f32::consts::PI) {
+    match angle.rem_euclid(std::f32::consts::PI) {
         x if x < 60.0_f32.to_radians() => match player_id {
             0 => &road_textures.red_diagonal_right,
             1 => &road_textures.blue_diagonal_right,
@@ -140,24 +168,5 @@ fn draw_road(
             3 => &road_textures.yellow_diagonal_left,
             _ => &road_textures.red_diagonal_left,
         },
-    };
-
-    //define road rectangle
-    let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0));
-
-    //draw the shadow
-    painter.image(
-        road_texture.id(),
-        rect.translate(egui::vec2(0.0, 5.0)),
-        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-        egui::Color32::from_black_alpha(120),
-    );
-
-    //draw the road itself with player color tint
-    painter.image(
-        road_texture.id(),
-        rect,
-        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-        egui::Color32::WHITE,
-    );
+    }
 }

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 pub struct TileTextures {
     pub land: HashMap<Resource, egui::TextureHandle>,
     pub water: egui::TextureHandle,
+    pub robber: egui::TextureHandle,
 }
 
 #[derive(Clone, Copy)]
@@ -70,8 +71,9 @@ pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
     land.insert(Desert, load("assets/tiles/desert.png"));
 
     let water = load("assets/tiles/water_background.png");
+    let robber = load("assets/placements/robber.png");
 
-    TileTextures { land, water }
+    TileTextures { land, water, robber }
 }
 
 pub fn tile_texture<'a>(textures: &'a TileTextures, resource: Resource) -> &'a egui::TextureHandle {
@@ -321,18 +323,21 @@ fn draw_hex(
     if index == robber_tile {
         //position badge at top-right of tile, outside the center area
         let badge_pos = center.to_pos2() + egui::vec2(20.0, -15.0) + egui::vec2(0.0, lift);
-        let badge_radius = 15.0;
         
+        let badge_radius = 20.0;
         //draw badge circle with black background
-        painter.circle_filled(badge_pos, badge_radius, egui::Color32::from_rgb(40, 40, 40));
-        painter.circle_stroke(badge_pos, badge_radius, egui::Stroke::new(2.0, egui::Color32::from_rgb(200, 50, 50)));
         
+        painter.circle_filled(badge_pos, badge_radius, egui::Color32::from_hex("#000000c9").unwrap());
+        painter.circle_stroke(badge_pos, badge_radius, egui::Stroke::new(3.0, egui::Color32::from_hex("#822f2fd7").unwrap()));
         //draw robber icon
-        painter.text(
+        let badge_rect = egui::Rect::from_center_size(
             badge_pos,
-            egui::Align2::CENTER_CENTER,
-            "R",
-            egui::FontId::proportional(18.0),
+            egui::vec2(badge_radius * 2.0, badge_radius * 2.0),
+        );
+        painter.image(
+            textures.robber.id(),
+            badge_rect,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
             egui::Color32::WHITE,
         );
     }

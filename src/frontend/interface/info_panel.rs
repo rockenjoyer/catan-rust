@@ -1,7 +1,7 @@
 use crate::backend::game::Game;
 use crate::frontend::interface::style::apply_style;
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::{egui, EguiContexts};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -19,12 +19,15 @@ pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>) {
             .order(egui::Order::Foreground)
             .resizable(false)
             .collapsible(false)
-            .anchor(egui::Align2::CENTER_TOP, (0.0, 0.0))
+            .anchor(egui::Align2::CENTER_TOP, (0.0, 10.0))
             .default_size(default_size)
             .show(context, |ui| {
                 let current = &game.players[game.current_player];
 
-                ui.label(format!("Current Player: {} (VP: {})", current.name, current.victory_points));
+                ui.label(format!(
+                    "Current Player: {} (VP: {})",
+                    current.name, current.victory_points
+                ));
 
                 ui.horizontal(|ui| {
                     ui.label(format!("Resources: "));
@@ -37,7 +40,8 @@ pub fn setup_info(mut context: EguiContexts, game: NonSend<Rc<RefCell<Game>>>) {
 
                 ui.separator();
 
-                ui.label(format!("Settlements: {} | Cities: {} | Roads: {}",
+                ui.label(format!(
+                    "Settlements: {} | Cities: {} | Roads: {}",
                     current.settlements.len(),
                     current.cities.len(),
                     current.roads.len()
