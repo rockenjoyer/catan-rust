@@ -236,7 +236,7 @@ impl Game {
             rng,
         }
     }
-
+/*
     pub fn from_dto(dto: crate::backend::networking::protocol::GameDTO) -> Self {
         Game {
             players: dto.players,
@@ -255,7 +255,7 @@ impl Game {
             rng: SmallRng::seed_from_u64(1),
         }
     }
-
+*/
     pub fn generate_board_from_coords<R: Rng + ?Sized>(
         rng: &mut R,
         hex_coords: Vec<(i32, i32)>
@@ -482,7 +482,7 @@ impl Game {
     }
 
     //2d6 rolls
-    pub fn roll_dice(&mut self) -> (u8, bool) {
+    pub fn roll_dice(&mut self) -> (u8, u8, bool) {
         let die1 = self.rng.random_range(1..=6);
         let die2 = self.rng.random_range(1..=6);
         let total = die1 + die2;
@@ -490,11 +490,11 @@ impl Game {
         if total == 7 {
             //discard cards but don't move robber yet
             self.robbery();
-            (total, true) //signal UI to handle robber movement
+            (die1, die2, true) //signal UI to handle robber movement
 
         } else {
             self.distribute_resources(total);
-            (total, false)
+            (die1, die2, false)
         }
     }
 

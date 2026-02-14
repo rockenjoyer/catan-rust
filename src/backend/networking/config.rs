@@ -24,7 +24,7 @@ impl ConnectionMode {
 
 #[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum GameMode {
-    Singleplayer,
+    Local,
     Multiplayer,
 }
 
@@ -35,6 +35,7 @@ pub enum AppState {
     Singleplayer,
     MultiplayerMenu,
     Hosting,
+    Lobby,
     Joining,
     InGame,
 }

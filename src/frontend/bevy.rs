@@ -6,21 +6,25 @@ use bevy_kira_audio::prelude::*;
 use bevy_quinnet::client::QuinnetClientPlugin;
 use bevy_quinnet::server::QuinnetServerPlugin;
 
+use crate::backend::networking::config;
 use crate::frontend::interface::{
-    game_panel, info_panel, settings_panel, log_panel, main_menu, multiplayer_menu,
+    game_panel, info_panel, settings_panel, log_panel, main_menu, multiplayer_menu, lobby_menu,
 };
-use crate::frontend::system::{audio, camera, multiplayer::handle_multiplayer_action};
+
+use crate::frontend::system::transition::NetworkTransition;
+use crate::frontend::system::{audio, camera, multiplayer::{handle_multiplayer_action, HostState}, transition::handle_network_transition};
 use crate::frontend::visual::{cards, city, road, settlement, tile, dice, startscreen};
 
 use crate::backend::networking::rendezvous::RendezvousServer;
-use crate::backend::networking::server::{handle_client_messages, handle_server_events, start_server};
-use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection};
+use crate::backend::networking::server::{handle_client_messages, handle_server_events, start_server, ServerPlayers, ServerGame, ServerPhase};
+use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
     #[default]
     MainMenu,
     MultiplayerMenu,
+    Lobby,
     Hosting,
     Joining,
     InGame,
@@ -54,7 +58,8 @@ impl Plugin for FrontendPlugin {
             //state management
             .init_state::<GameState>()
 
-            //event observer for multiplayer
+            //event observers for multiplayer
+            .add_observer(handle_network_transition)
             .add_observer(handle_multiplayer_action)
 
             //startup runs once
@@ -77,6 +82,12 @@ impl Plugin for FrontendPlugin {
             .insert_resource(audio::AudioState::default())
             .insert_resource(main_menu::MainMenuState::default())
             .insert_resource(multiplayer_menu::MultiplayerMenuState::default())
+            .insert_resource(config::GameMode::Local)
+            .insert_resource(HostState::default())
+            .insert_resource(ClientState::default())
+            
+            //resource for multiplayer
+            .insert_resource(ServerPlayers::default())
             
             //main menu systems
             .add_systems(
@@ -113,18 +124,34 @@ impl Plugin for FrontendPlugin {
                 ).run_if(in_state(GameState::InGame)),
             )
             .add_systems(
+                bevy_egui::EguiPrimaryContextPass,
+                lobby_menu::setup_lobby_menu
+                    .run_if(in_state(GameState::Lobby)),
+            )
+            .add_systems(
                 OnEnter(GameState::Hosting),
                 start_server,
             )
             .add_systems(
+                OnEnter(GameState::Hosting),
+                start_connection,
+            )
+            .add_systems(
                 Update,
-                (handle_server_events)
+                handle_server_events
+                    .run_if(|server_game: Option<Res<ServerGame>>| server_game.is_some())
                     .run_if(in_state(GameState::Hosting)),
             )
             .add_systems(
                 Update,
-                (handle_client_messages)
-                    .run_if(in_state(GameState::Hosting))
+                handle_client_messages
+                    .run_if(|server_game: Option<Res<ServerGame>>| server_game.is_some())
+                    .run_if(|server_phase: Option<Res<ServerPhase>>| server_phase.is_some())
+                    .run_if(in_state(GameState::Hosting)),
+            )
+            .add_systems(
+                OnEnter(GameState::Hosting),
+                start_connection,
             )
             .add_systems(
                 OnEnter(GameState::Joining),
@@ -133,7 +160,10 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Update,
                 (handle_client_events, handle_server_messages, handle_terminal_messages)
-                    .run_if(in_state(GameState::Joining)),
+                    .run_if(
+                        in_state(GameState::Joining)
+                        .or(in_state(GameState::Hosting)) 
+                    ),
             );
     }
 }

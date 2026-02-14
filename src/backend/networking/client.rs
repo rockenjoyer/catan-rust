@@ -25,6 +25,7 @@ use bevy_quinnet::{
 use crate::backend::networking::protocol::*;
 use crate::backend::networking::bootstrap;
 use crate::backend::networking::config::ConnectionMode;
+use crate::frontend::system::transition::NetworkTransition;
 
 #[derive(Resource, Clone)]
 pub struct PendingJoin {
@@ -66,19 +67,26 @@ pub fn on_app_exit(
 pub fn handle_server_messages(
     mut state: ResMut<ClientState>,
     mut client: ResMut<QuinnetClient>,
+    mut commands: Commands,
 ) {
     let mut client_connection = client.connection_mut();
 
-    while let Some(payload_bytes) = client_connection.try_receive_payload(1) {
+    while let Some(payload_bytes) = client_connection.try_receive_payload(0) {
         match bincode::deserialize::<ServerMessage>(&payload_bytes) {
             Ok(msg) => match msg {
                 ServerMessage::Confirmation { player } => {
-                    state.assigned_player = Some(player);
+                    if state.assigned_player.is_none() {
+                        state.assigned_player = Some(player);
+                        commands.trigger(NetworkTransition::EnterLobby);
+                    }
+
                     state.users.insert(player, format!("Player {}", player));
                     println!("You are Player {}", player);
                 }
                 ServerMessage::GameStart => {
                     println!("Game started");
+
+                    commands.trigger(NetworkTransition::EnterGame);
                 }
                 ServerMessage::Turn { player } => {
                     if Some(player) == state.assigned_player {
@@ -100,6 +108,13 @@ pub fn handle_server_messages(
                 ServerMessage::ClientDisconnected { player } => {
                     if let Some(name) = state.users.remove(&player) {
                         println!("{} left", name);
+                    }
+                }
+                ServerMessage::ActionResult { success, message } => {
+                    if success {
+                        println!("Action '{}' succeeded.", message);
+                    } else {
+                        println!("Action '{}' failed.", message);
                     }
                 }
                 _ => {}
@@ -181,13 +196,19 @@ pub fn handle_client_events(
 
 pub fn start_connection(
     mut client: ResMut<QuinnetClient>,
-    pending: Res<PendingJoin>,
+    pending: Option<Res<PendingJoin>>,
 ) {
+    let Some(pending) = pending else {
+        println!("No PendingJoin found. Skipping connection.");
+        return;
+    };
+
     let join_code = &pending.join_code;
 
     println!("Attempting to join with code: {}", join_code);
 
-    let server_addr = bootstrap::join(ConnectionMode::LOCAL, join_code);
+    let server_addr = bootstrap::join(ConnectionMode::LAN, join_code);
+
     println!("Game server address obtained: {}", server_addr);
 
     let _ = client.open_connection(ClientConnectionConfiguration {
@@ -203,3 +224,4 @@ pub fn start_connection(
 
     println!("Client attempting to connect to server at {}", server_addr);
 }
+

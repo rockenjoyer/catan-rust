@@ -15,10 +15,16 @@ use bevy_quinnet::{
     shared::ClientId,
 };
 
-use crate::backend::{game::{Game, RoadBuildingMode}, networking::rendezvous::RendezvousServer};
+use crate::backend::{game::{Game, RoadBuildingMode, Player}, networking::{client::PendingJoin, rendezvous::RendezvousServer}};
 use crate::backend::networking::protocol::*;
 use crate::backend::networking::bootstrap;
 use crate::backend::networking::config::ConnectionMode;
+
+#[derive(Resource, PartialEq)]
+pub enum ServerPhase {
+    Lobby,
+    InGame,
+}
 
 #[derive(Resource)]
 pub struct ServerGame {
@@ -29,12 +35,18 @@ pub struct ServerGame {
 pub struct ServerPlayers {
     pub players: HashMap<ClientId, usize>,
     pub next_player_id: usize,
+    pub host: Option<ClientId>,
 }
+
+#[derive(Resource, Clone)]
+pub struct JoinCode(pub String);
+
 
 pub fn handle_client_messages(
     mut server: ResMut<QuinnetServer>,
     mut server_game: ResMut<ServerGame>,
     mut players: ResMut<ServerPlayers>,
+    mut server_phase: ResMut<ServerPhase>,
 ) {
     server.endpoint_mut().set_default_channel(0);
 
@@ -55,9 +67,29 @@ pub fn handle_client_messages(
 
             match msg {
                 ClientMessage::Join => {
-                    let id = players.next_player_id;
-                    players.next_player_id += 1;
+                    if players.players.len() >= 4 {
+                        let err = ServerMessage::ActionResult {
+                            success: false,
+                            message: "Lobby full".into(),
+                        };
+
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        return;
+                    }
+
+                    let mut id = 0;
+                    while players.players.values().any(|&v| v == id) {
+                        id += 1;
+                    }
                     players.players.insert(client_id, id);
+
+                    if players.host.is_none() {
+                        players.host = Some(client_id);
+                    }
+                    
+                    let player_name = format!("Player {}", id);
+                    server_game.game.players.push(Player::new(id, &player_name));
 
                     let reply = ServerMessage::Confirmation { player: id as u8 };
                     let payload = bincode::serialize(&reply).unwrap();
@@ -65,74 +97,191 @@ pub fn handle_client_messages(
                     let _ = server
                         .endpoint_mut()
                         .try_send_payload(client_id, payload);
+
+                    let join_msg = ServerMessage::ClientConnected { player: id as u8 };
+                    let join_payload = bincode::serialize(&join_msg).unwrap();
+
+                    for &c in server.endpoint_mut().clients().iter() {
+                        if c != client_id {
+                            let _ = server.endpoint_mut().try_send_payload(c, join_payload.clone());
+                        }
+                    }
+
+                    for (&other_client_id, &other_player_id) in players.players.iter() {
+                        if other_client_id != client_id {
+                            let msg = ServerMessage::ClientConnected {
+                                player: other_player_id as u8,
+                            };
+                            let payload = bincode::serialize(&msg).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        }
+                    }
                 }
 
                 ClientMessage::BuildRoad { player_id, vertex1, vertex2 } => {
+                    if *server_phase != ServerPhase::InGame {
+                        let err = ServerMessage::ActionResult {
+                            success: false,
+                            message: "Game has not started yet".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        continue;
+                    }
+
+
                     if server_game.game
                         .build_road(player_id as usize, vertex1, vertex2, RoadBuildingMode::Normal)
                         .is_ok()
                     {
-                        broadcast_state(&mut server, &server_game);
+                        broadcast_action_result(&mut server, true, "Road built".into());
                     }
                 }
 
                 ClientMessage::BuildSettlement { player_id, vertex_id } => {
+                    if *server_phase != ServerPhase::InGame {
+                        let err = ServerMessage::ActionResult {
+                            success: false,
+                            message: "Game has not started yet".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        continue;
+                    }
+
+
                     if server_game.game
                         .build_settlement(player_id as usize, vertex_id)
                         .is_ok()
                     {
-                        broadcast_state(&mut server, &server_game);
+                        broadcast_action_result(&mut server, true, "Settlement built".into());
                     }
                 }
 
                 ClientMessage::BuildCity { player_id, vertex_id } => {
+                    if *server_phase != ServerPhase::InGame {
+                        let err = ServerMessage::ActionResult {
+                            success: false,
+                            message: "Game has not started yet".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        continue;
+                    }
+
+
                     if server_game.game
                         .build_city(player_id as usize, vertex_id)
                         .is_ok()
                     {
-                        broadcast_state(&mut server, &server_game);
+                        broadcast_action_result(&mut server, true, "City built".into());
                     }
                 }
 
-                ClientMessage::RollDice { .. } => {
-                    server_game.game.roll_dice();
-                    broadcast_state(&mut server, &server_game);
+                ClientMessage::RollDice { player_id } => {
+                    if *server_phase != ServerPhase::InGame {
+                        let err = ServerMessage::ActionResult {
+                            success: false,
+                            message: "Game has not started yet".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        continue;
+                    }
+
+                    if server_game.game.current_player == player_id as usize {
+                        server_game.game.roll_dice();
+                        broadcast_action_result(&mut server, true, "Dice rolled".into());
+                    }
                 }
 
                 ClientMessage::EndTurn { .. } => {
+                    if *server_phase != ServerPhase::InGame {
+                        let err = ServerMessage::ActionResult {
+                            success: false,
+                            message: "Game has not started yet".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        continue;
+                    }
+
                     server_game.game.end_turn();
-                    broadcast_state(&mut server, &server_game);
+                    broadcast_action_result(&mut server, true, "Turn ended".into());
                 }
 
                 ClientMessage::ChatMessage { message } => {
                     let msg = ServerMessage::ChatMessage { message };
                     let payload = bincode::serialize(&msg).unwrap();
+                    for c in server.endpoint_mut().clients() {
+                        let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+                    }
+                }
 
-                    let endpoint = server.endpoint_mut();
-                    for c in endpoint.clients() {
-                        let _ = endpoint.try_send_payload(c, payload.clone());
+                ClientMessage::GameStart => {
+                    if Some(client_id) == players.host {
+                        if players.players.len() > 1 {
+                            
+                            let start_msg = ServerMessage::GameStart;
+                            let payload = bincode::serialize(&start_msg).unwrap();
+
+                            for c in server.endpoint_mut().clients() {
+                                let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+                            }
+
+                            println!("Game started by host!");
+                            
+                            let mut phase = server_phase.as_mut();
+                            *phase = ServerPhase::InGame;
+                        } else {
+                            let err_msg = ServerMessage::ActionResult {
+                                success: false,
+                                message: "Need at least one other player to start".into(),
+                            };
+                            let payload = bincode::serialize(&err_msg).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        }
                     }
                 }
 
                 ClientMessage::Disconnect => {
-                    players.players.remove(&client_id);
-                    let _ = server.endpoint_mut().disconnect_client(client_id);
-                }
+                    if let Some(player_id) = players.players.remove(&client_id) {
+                        if players.host == Some(client_id) {
+                            players.host = None;
+                            println!("Host disconnected, new host must be assigned.");
+                            if let Some((&new_host, _)) = players.players.iter().next() {
+                                players.host = Some(new_host);
+                            }
+                        }
 
+                        let msg = ServerMessage::ClientDisconnected { player: player_id as u8 };
+                        let payload = bincode::serialize(&msg).unwrap();
+                        for c in server.endpoint_mut().clients() {
+                            let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+                        }
+
+                        let _ = server.endpoint_mut().disconnect_client(client_id);
+                    }
+                }
                 _ => {}
             }
         }
     }
 }
 
-fn broadcast_state(server: &mut QuinnetServer, game: &ServerGame) {
-    let dto = GameDTO::from(&game.game);
-    let msg = ServerMessage::GameStateUpdate { game: dto };
+fn broadcast_action_result(server: &mut QuinnetServer, success: bool, message: String) {
+    let msg = ServerMessage::ActionResult { success, message };
     let payload = bincode::serialize(&msg).unwrap();
+    for c in server.endpoint_mut().clients() {
+        let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+    }
+}
 
-    let endpoint = server.endpoint_mut();
-    for c in endpoint.clients() {
-        let _ = endpoint.try_send_payload(c, payload.clone());
+fn broadcast_chat(server: &mut QuinnetServer, message: &str) {
+    let msg = ServerMessage::ChatMessage { message: message.to_string() };
+    let payload = bincode::serialize(&msg).unwrap();
+    for c in server.endpoint_mut().clients() {
+        let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
     }
 }
 
@@ -148,14 +297,14 @@ pub fn handle_server_events(
 }
 
 pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
-    /*let join_code: String = rand::rng()
-        .sample_iter(&Alphanumeric)
-        .take(6)
-        .map(char::from)
-        .collect();
-    */
     let join_code = "ABC123".to_string();
-
+/*
+    let join_code: String = rand::rng()
+    .sample_iter(&Alphanumeric)
+    .take(6)
+    .map(char::from)
+    .collect();
+*/
     let rendezvous = RendezvousServer::new("0.0.0.0:4000");
     rendezvous.run_in_thread("0.0.0.0:4000");
     commands.insert_resource(rendezvous);
@@ -164,10 +313,7 @@ pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
 
     server
         .start_endpoint(ServerEndpointConfiguration {
-            addr_config: EndpointAddrConfiguration::from_ip(
-                Ipv4Addr::new(0, 0, 0, 0),
-                6000,
-            ),
+            addr_config: EndpointAddrConfiguration::from_ip(Ipv4Addr::new(0, 0, 0, 0), 6000),
             cert_mode: CertificateRetrievalMode::GenerateSelfSigned {
                 server_hostname: server_addr.to_string(),
             },
@@ -175,13 +321,12 @@ pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
         })
         .unwrap();
 
-    let game = Game::new(vec![
-        "Player 0".into(),
-        "Player 1".into(),
-        "Player 2".into(),
-        "Player 3".into(),
-    ]);
+    let game = Game::new(vec![]);
 
+    commands.insert_resource(ServerPlayers::default());
+    commands.insert_resource(ServerPhase::Lobby);
     commands.insert_resource(ServerGame { game });
+    commands.insert_resource(JoinCode(join_code.clone()));
+    commands.insert_resource(PendingJoin {join_code: join_code.clone()});
     println!("Server started at {}", server_addr);
 }
