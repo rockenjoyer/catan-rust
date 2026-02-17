@@ -1,8 +1,12 @@
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 
 use bevy::prelude::*;
 use bevy_ecs::message::MessageReader;
+
+use bevy_quinnet::client::ClientConnectionConfiguration;
+use bevy_quinnet::client::connection::ClientAddrConfiguration;
+use bevy_quinnet::client::certificate::CertificateVerificationMode;
 
 use bevy_quinnet::{
     server::{
@@ -13,6 +17,7 @@ use bevy_quinnet::{
         QuinnetServer,
     },
     shared::ClientId,
+    client::QuinnetClient,
 };
 
 use crate::backend::{game::{Game, RoadBuildingMode, Player}, networking::{client::PendingJoin, rendezvous::RendezvousServer}};
@@ -40,6 +45,10 @@ pub struct ServerPlayers {
 
 #[derive(Resource, Clone)]
 pub struct JoinCode(pub String);
+
+#[derive(Resource)]
+pub struct ServerAddr(pub SocketAddr);
+
 
 
 pub fn handle_client_messages(
@@ -328,5 +337,28 @@ pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
     commands.insert_resource(ServerGame { game });
     commands.insert_resource(JoinCode(join_code.clone()));
     commands.insert_resource(PendingJoin {join_code: join_code.clone()});
+    commands.insert_resource(ServerAddr(server_addr));
     println!("Server started at {}", server_addr);
+}
+
+pub fn host_connect_as_client(
+    mut client: ResMut<QuinnetClient>,
+    pending_join: Res<PendingJoin>,
+    server_addr: Res<ServerAddr>,
+) {
+    let join_code = &pending_join.join_code;
+    println!("Host attempting to join with code: {}", join_code);
+
+    let _ = client.open_connection(ClientConnectionConfiguration {
+        addr_config: ClientAddrConfiguration::from_ips(
+            server_addr.0.ip(),
+            server_addr.0.port(),
+            "0.0.0.0".parse::<Ipv4Addr>().unwrap(),
+            0,
+        ),
+        cert_mode: CertificateVerificationMode::SkipVerification,
+        defaultables: Default::default(),
+    });
+
+    println!("Host connected to server at {}", server_addr.0);
 }

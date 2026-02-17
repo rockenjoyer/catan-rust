@@ -16,7 +16,7 @@ use crate::frontend::system::{audio, camera, multiplayer::{handle_multiplayer_ac
 use crate::frontend::visual::{cards, city, road, settlement, tile, dice, startscreen};
 
 use crate::backend::networking::rendezvous::RendezvousServer;
-use crate::backend::networking::server::{handle_client_messages, handle_server_events, start_server, ServerPlayers, ServerGame, ServerPhase};
+use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server};
 use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -129,12 +129,8 @@ impl Plugin for FrontendPlugin {
                     .run_if(in_state(GameState::Lobby)),
             )
             .add_systems(
-                OnEnter(GameState::Hosting),
-                start_server,
-            )
-            .add_systems(
-                OnEnter(GameState::Hosting),
-                start_connection,
+                OnEnter(GameState::Hosting), 
+                (start_server, host_connect_as_client),
             )
             .add_systems(
                 Update,
@@ -145,9 +141,9 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Update,
                 handle_client_messages
-                    .run_if(|server_game: Option<Res<ServerGame>>| server_game.is_some())
-                    .run_if(|server_phase: Option<Res<ServerPhase>>| server_phase.is_some())
-                    .run_if(in_state(GameState::Hosting)),
+                    .run_if(resource_exists::<ServerGame>)
+                    .run_if(not(in_state(GameState::MainMenu))
+                    .and(not(in_state(GameState::MultiplayerMenu))))
             )
             .add_systems(
                 OnEnter(GameState::Hosting),
