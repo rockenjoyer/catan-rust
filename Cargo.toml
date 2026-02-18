@@ -40,6 +40,7 @@ bytes = "1.11.0"
 bincode = "1.3.3"
 stun = "0.9.0"
 bevy-wicon = "0.18.1"
+oorandom = "11.1.5"
 
 [lib]
 name = "catan_rust"

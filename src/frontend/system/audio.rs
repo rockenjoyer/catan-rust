@@ -15,6 +15,14 @@ pub struct MusicChannel;
 #[derive(Resource, Default)]
 pub struct SoundEffectsChannel;
 
+#[derive(Default)]
+pub struct PlacementCounts {
+    roads: usize,
+    settlements: usize,
+    cities: usize,
+    initialized: bool,
+}
+
 #[derive(Resource)]
 pub struct AudioState {
     pub handle: Option<Handle<AudioInstance>>,
@@ -84,7 +92,7 @@ pub fn play_click_sound(
         || mouse_buttons.just_pressed(MouseButton::Right)
     {
         sfx_channel
-            .play(asset_server.load("audio/soundeffects/Click.mp3"))
+            .play(asset_server.load("audio/soundeffects/Click.wav"))
             .with_volume(convert_decibel(0.15 * audio_state.sfx_volume));
     }
 }
@@ -106,15 +114,21 @@ pub fn play_sound_on_roll(
     *was_rolling = dice_state.rolling;
 }
 
-#[derive(Default)]
-pub(crate) struct PlacementCounts {
-    roads: usize,
-    settlements: usize,
-    cities: usize,
-    initialized: bool,
+pub fn play_win_sound(
+    asset_server: Res<AssetServer>,
+    sfx_channel: Res<AudioChannel<SoundEffectsChannel>>,
+    audio_state: Res<AudioState>,
+    mut played: Local<bool>,
+) {
+    if !*played {
+        sfx_channel
+            .play(asset_server.load("audio/soundeffects/Win.wav"))
+            .with_volume(convert_decibel(audio_state.sfx_volume));
+        *played = true;
+    }
 }
 
-pub(crate) fn play_sound_on_placement(
+pub fn play_sound_on_placement(
     game: NonSend<Rc<RefCell<Game>>>,
     state: Res<State<GameState>>,
     asset_server: Res<AssetServer>,

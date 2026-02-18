@@ -58,8 +58,6 @@ pub fn setup_settings(
                         ui.vertical_centered(|ui| {
                             button_style(ui, current_state.get());
 
-                            ui.separator();
-
                             ui.add_space(15.0);
                             //slider controls the music channel volume
                             let volume = audio_state.volume.clamp(0.0, 1.0);
@@ -88,12 +86,7 @@ pub fn setup_settings(
                                 update_sfx_volume(&mut audio_state, sfx_slider_value);
                             }
 
-                            if current_state.get() == &GameState::InGame {
-                                ui.add_space(15.0);
-                                if ui.button("🏠 Return to Main Menu").clicked() {
-                                    next_state.set(GameState::MainMenu);
-                                }
-                            }
+                            
                             ui.add_space(15.0);
                             ui.separator();
                             ui.add_space(15.0);
@@ -177,10 +170,7 @@ pub fn setup_settings(
                                     ui.add_space(8.0);
                                 }
 
-                                ui.add_space(12.0);
-
-                                ui.separator();
-                                ui.add_space(15.0);
+                                ui.add_space(20.0);
 
                                 ui.label(
                                     egui::RichText::new(format!(
@@ -190,6 +180,15 @@ pub fn setup_settings(
                                     ))
                                     .size(16.0),
                                 );
+                            }
+
+                            ui.add_space(15.0);
+
+                            if current_state.get() == &GameState::InGame {
+                                ui.add_space(15.0);
+                                if ui.button("🏠 Return to Main Menu").clicked() {
+                                    next_state.set(GameState::MainMenu);
+                                }
                             }
                         });
                     });

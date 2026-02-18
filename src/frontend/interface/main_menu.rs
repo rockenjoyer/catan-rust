@@ -77,7 +77,7 @@ pub fn setup_main_menu(
 
                 ui.add_space(15.0);
 
-                //temporary entry point to the endscreen UI
+                /* temporary entry point to the endscreen UI
                 if ui
                     .add_sized(
                         button_size,
@@ -87,8 +87,8 @@ pub fn setup_main_menu(
                 {
                     next_state.set(GameState::EndScreen);
                 }
-
                 ui.add_space(15.0);
+                */
 
                 //quit button
                 if ui
@@ -150,12 +150,16 @@ fn show_rules(ctx: &egui::Context, show: &mut bool) {
                     .size(14.0));
 
                 ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
 
                 ui.label(egui::RichText::new("2. Resources").strong().size(20.0));
                 ui.add_space(10.0);
                 ui.label(egui::RichText::new("Produced by tiles when the dice roll matches the tiles' number. Cities produce double resources.")
                     .size(14.0));
 
+                ui.add_space(10.0);
+                ui.separator();
                 ui.add_space(10.0);
 
                 ui.label(egui::RichText::new("3. Turn Structure").strong().size(20.0));
@@ -166,6 +170,8 @@ fn show_rules(ctx: &egui::Context, show: &mut bool) {
                     .size(14.0));
 
                 ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
 
                 ui.label(egui::RichText::new("4. Robber").strong().size(20.0));
                 ui.add_space(10.0);
@@ -173,6 +179,9 @@ fn show_rules(ctx: &egui::Context, show: &mut bool) {
                     .size(14.0));
                 ui.label(egui::RichText::new("Blocks resource production and steals 1 card from a player adjacent to the tile. Players with > 7 cards discard half.")
                     .size(14.0));
+                
+                ui.add_space(10.0);
+                ui.separator();
                 ui.add_space(10.0);
 
                 ui.label(egui::RichText::new("5. Victory Points").strong().size(20.0));

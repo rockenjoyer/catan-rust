@@ -81,6 +81,7 @@ pub fn draw_roads(
     game: &Game,
     road_textures: &RoadTextures,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+    zoom: f32,
 ) {
     //draw all roads for all players with their colors
     for player in &game.players {
@@ -93,6 +94,7 @@ pub fn draw_roads(
                 &game.vertices,
                 screen,
                 road_textures,
+                zoom,
             );
         }
     }
@@ -107,6 +109,7 @@ fn draw_road(
     vertices: &[Vertex],
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     road_textures: &RoadTextures,
+    zoom: f32,
 ) {
     let start = screen(vertices[a].pos);
     let end = screen(vertices[b].pos);
@@ -119,8 +122,7 @@ fn draw_road(
 
     let road_texture = select_road_texture(road_textures, player_id, angle);
 
-    //define road rectangle
-    let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0));
+    let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0 * zoom));
 
     //draw the shadow
     painter.image(

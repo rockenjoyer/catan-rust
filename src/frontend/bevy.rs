@@ -114,6 +114,7 @@ impl Plugin for FrontendPlugin {
                     startscreen::setup_logo,
                     endscreen::setup_endscreen,
                     settings_panel::setup_settings,
+                    audio::play_win_sound,
                 )
                     .run_if(in_state(GameState::EndScreen)),
             );

@@ -180,7 +180,7 @@ fn show_stats(
                         .striped(true)
                         .spacing(egui::vec2(20.0, 10.0))
                         .show(ui, |ui| {
-                            ui.label(" ");
+                            ui.label("");
                             ui.label("Player");
                             ui.label("VP");
                             ui.label("Settlements");
@@ -190,7 +190,7 @@ fn show_stats(
                             ui.end_row();
 
                             for player in stats {
-                                ui.label(" ");
+                                ui.label("");
                                 ui.label(&player.name);
                                 ui.label(player.victory_points.to_string());
                                 ui.label(player.settlements.to_string());

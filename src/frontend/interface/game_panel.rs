@@ -194,11 +194,51 @@ pub fn setup_game(
                 let size = ui.available_size();
                 let (response, painter) = ui.allocate_painter(size, egui::Sense::hover());
 
-                //scale based on screen size to match different resolutions
-                let scale = size.x.min(size.y) / 17.0;
 
-                let origin = response.rect.center();
-                let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
+                    //mouse scroll zooming
+                    let zoom_id = ui.id().with("zoom");
+                    //initial zoom is 1.0 (standard size), it can go up to 1.4x for a closer look
+                    let mut zoom = ui.memory(|mem| mem.data.get_temp::<f32>(zoom_id)).unwrap_or(1.0);
+                    let scroll = ui.input(|i| i.raw_scroll_delta.y);
+                    if scroll > 0.0 {
+                        zoom = (zoom * 1.05).min(1.4);
+                    } else if scroll < 0.0 {
+                        zoom = (zoom / 1.05).max(1.0);
+                    }
+                    if zoom < 1.0 { zoom = 1.0; }
+                    if zoom > 1.4 { zoom = 1.4; }
+                    ui.memory_mut(|mem| mem.data.insert_temp(zoom_id, zoom));
+
+                    //camera panning with right mouse drag
+                    let pan_id = ui.id().with("pan");
+                    let mut pan = ui.memory(|mem| mem.data.get_temp::<egui::Vec2>(pan_id)).unwrap_or(egui::Vec2::ZERO);
+                    //calculate background size for clamping
+                    let aspect_ratio = 16.0 / 9.0;
+                    let (bg_width, bg_height) = if size.x / size.y > aspect_ratio {
+                        let width = size.x * zoom;
+                        (width, width / aspect_ratio)
+                    } else {
+                        let height = size.y * zoom;
+                        (height * aspect_ratio, height)
+                    };
+                    //clamp pan so background never leaves the screen
+                    let max_x = (bg_width - size.x) / 2.0;
+                    let max_y = (bg_height - size.y) / 2.0;
+                    if ui.input(|i| i.pointer.secondary_down()) {
+                        let delta = ui.input(|i| i.pointer.delta());
+                        pan += delta;
+                        //clamp pan
+                        pan.x = pan.x.clamp(-max_x, max_x);
+                        pan.y = pan.y.clamp(-max_y, max_y);
+                        ui.memory_mut(|mem| mem.data.insert_temp(pan_id, pan));
+                    }
+                    //clamp pan on load/resize aswell
+                    pan.x = pan.x.clamp(-max_x, max_x);
+                    pan.y = pan.y.clamp(-max_y, max_y);
+
+                    let scale = size.x.min(size.y) / 17.0 * zoom;
+                    let origin = response.rect.center() + pan;
+                    let screen = |(x, y): (f32, f32)| egui::pos2(origin.x + x * scale, origin.y + y * scale);
 
                 //draw everything (in correct layer order)
                 let game_borrow = game.borrow();
@@ -212,13 +252,15 @@ pub fn setup_game(
                     &*tile_textures,
                     &screen,
                     clicked_vertex.as_mut(),
+                    Some(zoom),
+                    pan,
                 );
 
                 //layer 2 (roads)
-                draw_roads(&painter, &game_borrow, &*road_textures, &screen);
+                draw_roads(&painter, &game_borrow, &*road_textures, &screen, zoom);
 
                 //layer 3 (vertices)
-                draw_vertices(ui, &painter, response.rect, &game_borrow, &screen, clicked_vertex.as_mut());
+                draw_vertices(ui, &painter, response.rect, &game_borrow, &screen, clicked_vertex.as_mut(), zoom);
 
                 //build mode overlays (highlights and ghost previews for placements)
                 let is_setup = matches!(current_phase, GamePhase::SetupRound1 | GamePhase::SetupRound2);
@@ -239,6 +281,23 @@ pub fn setup_game(
                     &buildable_edges,
                 );
 
+                let road_click_active = (is_setup && setup_placement == 1)
+                    || matches!(active_building_mode, BuildingMode::BuildingRoad)
+                    || dev_card_road_building_active;
+
+                if road_click_active
+                    && hovered_vertex.is_none()
+                    && ui.input(|inp| inp.pointer.primary_clicked())
+                {
+                    if let Some((a, b)) = hovered_edge {
+                        road_state.last_two_vertices.clear();
+                        road_state.last_two_vertices.push(a);
+                        road_state.last_two_vertices.push(b);
+                        clicked_vertex.vertex_id = None;
+                        clicked_vertex.selected_vertex = None;
+                    }
+                }
+
                 //visuals to show where the player can build
                 draw_building_highlights(
                     &painter,
@@ -249,6 +308,7 @@ pub fn setup_game(
                     current_player_id,
                     &buildable_vertices,
                     &buildable_edges,
+                        zoom,
                 );
 
                 //ghosted preview under the cursor for the current build mode
@@ -269,28 +329,31 @@ pub fn setup_game(
                     hovered_edge,
                     &buildable_vertices,
                     &buildable_edges,
-                    &road_state.last_two_vertices
+                    &road_state.last_two_vertices,
+                    zoom,
                 );
 
                 //layer 4 (settlements and cities)
-                draw_settlements(&painter, &game_borrow, &*settlement_textures, &screen);
-                draw_cities(&painter, &game_borrow, &*city_textures, &screen);
+                draw_settlements(&painter, &game_borrow, &*settlement_textures, &screen, zoom);
+                draw_cities(&painter, &game_borrow, &*city_textures, &screen, zoom);
 
                 //particle burst for placement
-                draw_build_particles(&painter, &screen, now, build_effects.as_mut());
+                draw_build_particles(&painter, &screen, now, build_effects.as_mut(), zoom);
                 
                 //layer 5 (cards)
-                 let cards_pos = egui::pos2(
-                    response.rect.right() - 150.0,
-                    response.rect.center().y + 150.0
+                let card_size = egui::vec2(120.0, 160.0);
+                let spacing = 15.0;
+                let cards_pos = egui::pos2(
+                    response.rect.right() - 185.0,
+                    response.rect.center().y + 95.0
                 );
                 clicked_dev_card = draw_cards(
                     ui,
                     &painter,
                     &*card_textures,
                     cards_pos,
-                    egui::vec2(90.0, 125.0),
-                    20.0,
+                    card_size,
+                    spacing,
                     &player_resources,
                     &player_dev_cards_map,
                     &player_dev_cards_instances,
@@ -363,7 +426,7 @@ pub fn setup_game(
                             //show current selection
                             if road_state.last_two_vertices.len() == 1 {
                                 ui.label(format!("Selected: {}", road_state.last_two_vertices[0]));
-                                ui.label("Click another vertex");
+                                ui.label("Click another vertex or the road center");
                             } else if road_state.last_two_vertices.len() == 2 {
                                 ui.label(format!("Road: {} -> {}", 
                                     road_state.last_two_vertices[0], 
@@ -377,7 +440,7 @@ pub fn setup_game(
                                     road_state.last_two_vertices.clear();
                                 }
                             } else {
-                                ui.label("Click first vertex");
+                                ui.label("Click first vertex or the road center");
                             }
                         }
                     }
@@ -680,7 +743,7 @@ pub fn setup_game(
 
                                     if road_state.last_two_vertices.len() == 1 {
                                         ui.label(format!("First vertex: {}", road_state.last_two_vertices[0]));
-                                        ui.label("Click second vertex");
+                                        ui.label("Click second vertex or the road center");
                                     } else if road_state.last_two_vertices.len() == 2 {
                                         ui.label(format!("Road: {} -> {}", 
                                             road_state.last_two_vertices[0], 
@@ -690,7 +753,7 @@ pub fn setup_game(
                                             should_build_road = true;
                                         }
                                     } else {
-                                        ui.label("Click first vertex");
+                                        ui.label("Click first vertex or the road center");
                                     }
 
                                     if ui.button("Cancel").clicked() {
@@ -1293,6 +1356,7 @@ fn draw_building_highlights(
     current_player_id: usize,
     buildable_vertices: &HashSet<usize>,
     buildable_edges: &HashSet<(usize, usize)>,
+    zoom: f32,
 ) {
     //pulse to make buildable spots easy to see
     let pulse = (now * 5.0).sin() * 0.5 + 0.5;
@@ -1303,10 +1367,12 @@ fn draw_building_highlights(
     let vertex_color = egui::Color32::from_rgba_unmultiplied(r, g, b, vertex_alpha);
     let edge_color = egui::Color32::from_rgba_unmultiplied(r, g, b, edge_alpha);
 
-    //draw vertex rings in the player's color
+    //draw vertex rings in the player's color, scale with zoom
     for &vertex_id in buildable_vertices {
         let pos = screen(game.vertices[vertex_id].pos);
-        painter.circle_stroke(pos, 16.0, egui::Stroke::new(3.0, vertex_color));
+        let radius = 16.0 * zoom;
+        let thickness = 3.0 * zoom.max(1.0);
+        painter.circle_stroke(pos, radius, egui::Stroke::new(thickness, vertex_color));
     }
 
     for &(a, b) in buildable_edges {
@@ -1317,7 +1383,7 @@ fn draw_building_highlights(
         let length = dir.length();
         let angle = dir.y.atan2(dir.x);
         let texture = select_road_texture(road_textures, current_player_id, angle);
-        let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0));
+        let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0 * zoom));
 
         painter.image(
             texture.id(),
@@ -1346,6 +1412,7 @@ fn draw_ghosts_preview(
     buildable_vertices: &HashSet<usize>,
     buildable_edges: &HashSet<(usize, usize)>,
     road_selection: &[usize],
+    zoom: f32,
 ) {
     //decide which ghost to show based on mode
     let show_settlement = is_setup && setup_placement == 0
@@ -1361,7 +1428,7 @@ fn draw_ghosts_preview(
             if buildable_vertices.contains(&vertex_id) {
                 let texture = settlement_texture_for_player(settlement_textures, current_player_id);
                 let pos = screen(game.vertices[vertex_id].pos);
-                let rect = egui::Rect::from_center_size(pos, egui::vec2(35.7, 50.0));
+                let rect = egui::Rect::from_center_size(pos, egui::vec2(35.7 * zoom, 50.0 * zoom));
                 painter.image(
                     texture.id(),
                     rect,
@@ -1378,7 +1445,7 @@ fn draw_ghosts_preview(
             if buildable_vertices.contains(&vertex_id) {
                 let texture = city_texture_for_player(city_textures, current_player_id);
                 let pos = screen(game.vertices[vertex_id].pos);
-                let rect = egui::Rect::from_center_size(pos, egui::vec2(68.6, 60.0));
+                let rect = egui::Rect::from_center_size(pos, egui::vec2(68.6 * zoom, 60.0 * zoom));
                 painter.image(
                     texture.id(),
                     rect,
@@ -1403,7 +1470,7 @@ fn draw_ghosts_preview(
             let length = dir.length();
             let angle = dir.y.atan2(dir.x);
             let texture = select_road_texture(road_textures, current_player_id, angle);
-            let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0));
+            let rect = egui::Rect::from_center_size(center, egui::vec2(length / 1.1, 60.0 * zoom));
 
             painter.image(
                 texture.id(),
@@ -1420,6 +1487,7 @@ fn draw_build_particles(
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     now: f32,
     build_effects: &mut BuildEffectsState,
+    zoom: f32,
 ) {
     //radial burst animation after placements
     let duration = 0.8;
@@ -1431,11 +1499,11 @@ fn draw_build_particles(
     //each burst expands and fades over its lifetime
     for burst in &build_effects.bursts {
         let t = ((now - burst.spawned_at) / duration).clamp(0.0, 1.0);
-        let radius = 6.0 + t * 26.0;
+        let radius = (6.0 + t * 26.0) * zoom;
 
         //fade out and shrink over time
         let alpha = ((1.0 - t) * 200.0) as u8;
-        let size = 3.0 + (1.0 - t) * 3.0;
+        let size = (3.0 + (1.0 - t) * 3.0) * zoom;
         let center = screen(burst.pos);
 
         let (r, g, b) = burst.color;
