@@ -25,6 +25,8 @@ use crate::backend::networking::protocol::*;
 use crate::backend::networking::bootstrap;
 use crate::backend::networking::config::ConnectionMode;
 
+use crate::frontend::system::transition::NetworkTransition;
+
 #[derive(Resource, PartialEq)]
 pub enum ServerPhase {
     Lobby,
@@ -314,11 +316,15 @@ pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
     .map(char::from)
     .collect();
 */
+    commands.insert_resource(JoinCode(join_code.clone()));
+    commands.insert_resource(PendingJoin {join_code: join_code.clone()});
+
     let rendezvous = RendezvousServer::new("0.0.0.0:4000");
     rendezvous.run_in_thread("0.0.0.0:4000");
     commands.insert_resource(rendezvous);
 
     let server_addr = bootstrap::host(ConnectionMode::LAN, &join_code);
+    commands.insert_resource(ServerAddr(server_addr));
 
     server
         .start_endpoint(ServerEndpointConfiguration {
@@ -330,29 +336,30 @@ pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
         })
         .unwrap();
 
-    let game = Game::new(vec![]);
+    let game = Game::new(vec!["player0", "player1", "player2", "player3"]);
 
     commands.insert_resource(ServerPlayers::default());
     commands.insert_resource(ServerPhase::Lobby);
     commands.insert_resource(ServerGame { game });
-    commands.insert_resource(JoinCode(join_code.clone()));
-    commands.insert_resource(PendingJoin {join_code: join_code.clone()});
-    commands.insert_resource(ServerAddr(server_addr));
+
     println!("Server started at {}", server_addr);
 }
 
 pub fn host_connect_as_client(
     mut client: ResMut<QuinnetClient>,
-    pending_join: Res<PendingJoin>,
-    server_addr: Res<ServerAddr>,
+    join_code: Res<JoinCode>,
+    mut commands: Commands,
 ) {
-    let join_code = &pending_join.join_code;
-    println!("Host attempting to join with code: {}", join_code);
+    println!("Host attempting to join with code: {}", join_code.0);
+
+    let server_addr = bootstrap::join(ConnectionMode::LAN, &join_code.0);
+
+    println!("Game server address obtained: {}", server_addr);
 
     let _ = client.open_connection(ClientConnectionConfiguration {
         addr_config: ClientAddrConfiguration::from_ips(
-            server_addr.0.ip(),
-            server_addr.0.port(),
+            server_addr.ip(),
+            server_addr.port(),
             "0.0.0.0".parse::<Ipv4Addr>().unwrap(),
             0,
         ),
@@ -360,5 +367,6 @@ pub fn host_connect_as_client(
         defaultables: Default::default(),
     });
 
-    println!("Host connected to server at {}", server_addr.0);
+    println!("Host connected to server at {}", server_addr);
+    commands.trigger(NetworkTransition::EnterLobby);
 }

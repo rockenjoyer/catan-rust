@@ -197,6 +197,7 @@ pub fn handle_client_events(
 pub fn start_connection(
     mut client: ResMut<QuinnetClient>,
     pending: Option<Res<PendingJoin>>,
+    mut commands: Commands,
 ) {
     let Some(pending) = pending else {
         println!("No PendingJoin found. Skipping connection.");
@@ -223,5 +224,7 @@ pub fn start_connection(
     });
 
     println!("Client attempting to connect to server at {}", server_addr);
+
+    commands.trigger(NetworkTransition::EnterLobby);
 }
 

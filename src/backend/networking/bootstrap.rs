@@ -40,7 +40,7 @@ pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
 
     let mut buf = [0u8; 512];
     let start_time = Instant::now();
-    let timeout = Duration::from_secs(5);
+    let timeout = Duration::from_secs(10);
 
     loop {
         if let Ok((len, _)) = socket.recv_from(&mut buf) {

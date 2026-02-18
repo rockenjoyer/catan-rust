@@ -30,7 +30,7 @@ pub fn handle_multiplayer_action(
             println!("Hosting game...");
             host_state.is_host = true;
 
-            next_state.set(GameState::Lobby);
+            next_state.set(GameState::Hosting);
         }
         
         MultiplayerAction::Join { code } => {
@@ -41,7 +41,7 @@ pub fn handle_multiplayer_action(
                 join_code: code.clone(),
             });
 
-            next_state.set(GameState::Lobby);
+            next_state.set(GameState::Joining);
         }
 
         MultiplayerAction::Back => {
@@ -52,10 +52,11 @@ pub fn handle_multiplayer_action(
             if host_state.is_host {
                 println!("Host attempting to start game");
 
-                let msg = ClientMessage::GameStart;
-                let payload = bincode::serialize(&msg).unwrap();
-
-                let _ = client.connection_mut().try_send_payload(payload);
+                if let Some(connection) = client.get_connection_mut() {
+                    let msg = ClientMessage::GameStart;
+                    let payload = bincode::serialize(&msg).unwrap();
+                    let _ = connection.try_send_payload(payload);
+                }
             }
         }
     }

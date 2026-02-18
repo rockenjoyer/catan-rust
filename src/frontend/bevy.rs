@@ -4,7 +4,7 @@ use bevy_egui::EguiPlugin;
 use bevy_kira_audio::prelude::*;
 
 use bevy_quinnet::client::QuinnetClientPlugin;
-use bevy_quinnet::server::QuinnetServerPlugin;
+use bevy_quinnet::server::{QuinnetServerPlugin, QuinnetServer};
 
 use crate::backend::networking::config;
 use crate::frontend::interface::{
@@ -16,8 +16,8 @@ use crate::frontend::system::{audio, camera, multiplayer::{handle_multiplayer_ac
 use crate::frontend::visual::{cards, city, road, settlement, tile, dice, startscreen};
 
 use crate::backend::networking::rendezvous::RendezvousServer;
-use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server};
-use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState};
+use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server, ServerAddr};
+use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState, start_terminal_listener, TerminalReceiver};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
@@ -68,6 +68,7 @@ impl Plugin for FrontendPlugin {
                 (
                     audio::play_background_music,
                     camera::setup_camera,
+                    start_terminal_listener,
                 ),
             )
 
@@ -130,7 +131,17 @@ impl Plugin for FrontendPlugin {
             )
             .add_systems(
                 OnEnter(GameState::Hosting), 
-                (start_server, host_connect_as_client),
+                (
+                    start_server.run_if(|host_state: Res<HostState>| host_state.is_host), 
+                    host_connect_as_client
+                        .after(start_server)
+                        .run_if(|host_state: Res<HostState>| host_state.is_host)
+                        .run_if(resource_exists::<ServerAddr>),
+                    ),
+            )
+            .add_systems(
+                OnEnter(GameState::Joining),
+                start_connection,
             )
             .add_systems(
                 Update,
@@ -142,24 +153,24 @@ impl Plugin for FrontendPlugin {
                 Update,
                 handle_client_messages
                     .run_if(resource_exists::<ServerGame>)
+                    .run_if(resource_exists::<ServerPhase>)
+                    .run_if(resource_exists::<QuinnetServer>)
                     .run_if(not(in_state(GameState::MainMenu))
                     .and(not(in_state(GameState::MultiplayerMenu))))
             )
             .add_systems(
-                OnEnter(GameState::Hosting),
-                start_connection,
-            )
-            .add_systems(
-                OnEnter(GameState::Joining),
-                start_connection,
+                Update,
+                (handle_client_events, handle_server_messages)
+                    .run_if(
+                        in_state(GameState::Joining)
+                        .or(in_state(GameState::Hosting))
+                        .or(in_state(GameState::Lobby)) 
+                    ),
             )
             .add_systems(
                 Update,
-                (handle_client_events, handle_server_messages, handle_terminal_messages)
-                    .run_if(
-                        in_state(GameState::Joining)
-                        .or(in_state(GameState::Hosting)) 
-                    ),
+                handle_terminal_messages
+                    .run_if(resource_exists::<TerminalReceiver>),
             );
     }
 }
