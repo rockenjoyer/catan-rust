@@ -1,7 +1,9 @@
+use bevy_ecs::system::ResMut;
 use serde::{Serialize, Deserialize};
 use crate::backend::game::{DevCard, DevCardInput, Game, GamePhase, Harbor, Player, Tile, TurnPhase, Vertex};
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use crate::backend::networking::client::ClientState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Channel {
@@ -46,7 +48,12 @@ pub enum ServerMessage {
     ChatMessage { message: String },
 
     ClientConnected { player: u8 },
-    ClientDisconnected { player: u8},
+    ClientDisconnected { player: u8 },
 
-    ActionResult { success: bool, message: String},
+    ActionResult { success: bool, message: String },
+    SettlementBuilt { player_id: u8, vertex_id: usize },
+    CityBuilt { player_id: u8, vertex_id: usize },
+    DiceRolled { die1: u8, die2: u8, needs_robber: bool },
+    EndedTurn { player_id: u8 },
+    RoadBuilt { player_id: u8, vertex1: usize, vertex2: usize },
 }

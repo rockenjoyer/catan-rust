@@ -164,6 +164,8 @@ impl Player {
     }
 }
 
+
+#[derive(Debug)]
 pub struct Game {
     pub players: Vec<Player>,
     pub vertices: Vec<Vertex>,

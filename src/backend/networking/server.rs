@@ -140,12 +140,34 @@ pub fn handle_client_messages(
                         continue;
                     }
 
+                    if server_game.game.current_player == player_id as usize { 
+                        if server_game.game.build_road(player_id as usize, vertex1, vertex2, RoadBuildingMode::Normal).is_ok() {
+                            let reply = ServerMessage::Confirmation { player: player_id };
+                            let reply_payload = bincode::serialize(&reply).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, reply_payload);
 
-                    if server_game.game
-                        .build_road(player_id as usize, vertex1, vertex2, RoadBuildingMode::Normal)
-                        .is_ok()
-                    {
-                        broadcast_action_result(&mut server, true, "Road built".into());
+                            let update = ServerMessage::RoadBuilt { player_id, vertex1, vertex2 };
+                            let update_payload = bincode::serialize(&update).unwrap();
+                            for c in server.endpoint_mut().clients() {
+                                let _ = server.endpoint_mut().try_send_payload(c, update_payload.clone());
+                            }
+
+                            broadcast_action_result(&mut server, true, "Road built".into());
+                        } else {
+                            let err = ServerMessage::ActionResult {
+                                success: false,
+                                message: "Failed to build road".into(),
+                            };
+                            let payload = bincode::serialize(&err).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        }
+                    } else {
+                        let err = ServerMessage::ActionResult { 
+                            success: false, 
+                            message: "Not your turn!".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
                     }
                 }
 
@@ -160,12 +182,34 @@ pub fn handle_client_messages(
                         continue;
                     }
 
+                    if server_game.game.current_player == player_id as usize { 
+                        if server_game.game.build_settlement(player_id as usize, vertex_id).is_ok() {
+                            let reply = ServerMessage::Confirmation { player: player_id };
+                            let reply_payload = bincode::serialize(&reply).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, reply_payload);
 
-                    if server_game.game
-                        .build_settlement(player_id as usize, vertex_id)
-                        .is_ok()
-                    {
-                        broadcast_action_result(&mut server, true, "Settlement built".into());
+                            let update = ServerMessage::SettlementBuilt { player_id, vertex_id };
+                            let update_payload = bincode::serialize(&update).unwrap();
+                            for c in server.endpoint_mut().clients() {
+                                let _ = server.endpoint_mut().try_send_payload(c, update_payload.clone());
+                            }
+
+                            broadcast_action_result(&mut server, true, "Settlement built".into());
+                        } else {
+                            let err = ServerMessage::ActionResult {
+                                success: false,
+                                message: "Failed to build settlement".into(),
+                            };
+                            let payload = bincode::serialize(&err).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        }
+                    } else {
+                        let err = ServerMessage::ActionResult { 
+                            success: false, 
+                            message: "Not your turn!".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
                     }
                 }
 
@@ -180,12 +224,34 @@ pub fn handle_client_messages(
                         continue;
                     }
 
+                    if server_game.game.current_player == player_id as usize { 
+                        if server_game.game.build_city(player_id as usize, vertex_id).is_ok() {
+                            let reply = ServerMessage::Confirmation { player: player_id };
+                            let reply_payload = bincode::serialize(&reply).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, reply_payload);
 
-                    if server_game.game
-                        .build_city(player_id as usize, vertex_id)
-                        .is_ok()
-                    {
-                        broadcast_action_result(&mut server, true, "City built".into());
+                            let update = ServerMessage::CityBuilt { player_id, vertex_id };
+                            let update_payload = bincode::serialize(&update).unwrap();
+                            for c in server.endpoint_mut().clients() {
+                                let _ = server.endpoint_mut().try_send_payload(c, update_payload.clone());
+                            }
+
+                            broadcast_action_result(&mut server, true, "City built".into());
+                        } else {
+                            let err = ServerMessage::ActionResult {
+                                success: false,
+                                message: "Failed to build city".into(),
+                            };
+                            let payload = bincode::serialize(&err).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                        }
+                    } else {
+                        let err = ServerMessage::ActionResult { 
+                            success: false, 
+                            message: "Not your turn!".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
                     }
                 }
 
@@ -200,13 +266,30 @@ pub fn handle_client_messages(
                         continue;
                     }
 
-                    if server_game.game.current_player == player_id as usize {
-                        server_game.game.roll_dice();
-                        broadcast_action_result(&mut server, true, "Dice rolled".into());
+                    if server_game.game.current_player == player_id as usize { 
+                        let (die1, die2, needs_robber) = server_game.game.roll_dice();
+                        let reply = ServerMessage::Confirmation { player: player_id };
+                        let reply_payload = bincode::serialize(&reply).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, reply_payload);
+                        
+                        let update = ServerMessage::DiceRolled { die1, die2, needs_robber };
+                        let update_payload = bincode::serialize(&update).unwrap();
+                        for c in server.endpoint_mut().clients() {
+                            let _ = server.endpoint_mut().try_send_payload(c, update_payload.clone());
+                        }
+
+                            broadcast_action_result(&mut server, true, "Dice rolled".into());
+                    } else {
+                        let err = ServerMessage::ActionResult { 
+                            success: false, 
+                            message: "Not your turn!".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
                     }
                 }
 
-                ClientMessage::EndTurn { .. } => {
+                ClientMessage::EndTurn { player_id } => {
                     if *server_phase != ServerPhase::InGame {
                         let err = ServerMessage::ActionResult {
                             success: false,
@@ -217,8 +300,27 @@ pub fn handle_client_messages(
                         continue;
                     }
 
-                    server_game.game.end_turn();
-                    broadcast_action_result(&mut server, true, "Turn ended".into());
+                    if server_game.game.current_player == player_id as usize { 
+                            server_game.game.end_turn();
+                            let reply = ServerMessage::Confirmation { player: player_id };
+                            let reply_payload = bincode::serialize(&reply).unwrap();
+                            let _ = server.endpoint_mut().try_send_payload(client_id, reply_payload);
+
+                            let update = ServerMessage::EndedTurn { player_id };
+                            let update_payload = bincode::serialize(&update).unwrap();
+                            for c in server.endpoint_mut().clients() {
+                                let _ = server.endpoint_mut().try_send_payload(c, update_payload.clone());
+                            }
+
+                            broadcast_action_result(&mut server, true, "Turn ended".into());
+                    } else {
+                        let err = ServerMessage::ActionResult { 
+                            success: false, 
+                            message: "Not your turn!".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
+                    }
                 }
 
                 ClientMessage::ChatMessage { message } => {

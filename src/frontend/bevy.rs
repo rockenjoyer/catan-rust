@@ -17,7 +17,7 @@ use crate::frontend::visual::{cards, city, road, settlement, tile, dice, startsc
 
 use crate::backend::networking::rendezvous::RendezvousServer;
 use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server, ServerAddr};
-use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState, start_terminal_listener, TerminalReceiver};
+use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState, start_terminal_listener, TerminalReceiver, initialize_game_state};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
@@ -123,6 +123,10 @@ impl Plugin for FrontendPlugin {
                     settings_panel::setup_settings,
                     log_panel::setup_log_panel,
                 ).run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                OnEnter(GameState::InGame),
+                initialize_game_state,
             )
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,

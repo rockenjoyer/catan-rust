@@ -22,9 +22,12 @@ use bevy_quinnet::{
     shared::ClientId,
 };
 
-use crate::backend::networking::protocol::*;
-use crate::backend::networking::bootstrap;
-use crate::backend::networking::config::ConnectionMode;
+use crate::backend::networking::{
+    protocol::*,
+    bootstrap,
+    config::ConnectionMode,
+};
+use crate::backend::game::{ Game, RoadBuildingMode };
 use crate::frontend::system::transition::NetworkTransition;
 
 #[derive(Resource, Clone)]
@@ -38,10 +41,11 @@ pub struct Users {
     names: HashMap<ClientId, String>,
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Debug, Default)]
 pub struct ClientState {
     pub assigned_player: Option<u8>,
     pub users: HashMap<u8, String>,
+    pub game: Option<Game>,
 }
 
 #[derive(Resource, Deref, DerefMut)]
@@ -65,7 +69,7 @@ pub fn on_app_exit(
 }
 
 pub fn handle_server_messages(
-    mut state: ResMut<ClientState>,
+    mut state: ClientState,
     mut client: ResMut<QuinnetClient>,
     mut commands: Commands,
 ) {
@@ -108,6 +112,16 @@ pub fn handle_server_messages(
                 ServerMessage::ClientDisconnected { player } => {
                     if let Some(name) = state.users.remove(&player) {
                         println!("{} left", name);
+                    }
+                }
+                ServerMessage::SettlementBuilt { player_id, vertex_id } => {
+                    if let Some(game) = &mut state.game {
+                        let _ = game.build_settlement(player_id as usize, vertex_id);
+                    }
+                }
+                ServerMessage::RoadBuilt { player_id, vertex1, vertex2 } => {
+                    if let Some(game) = &mut state.game {
+                        let _ = game.build_road(player_id as usize, vertex1, vertex2, RoadBuildingMode::Normal);
                     }
                 }
                 ServerMessage::ActionResult { success, message } => {
@@ -191,6 +205,19 @@ pub fn handle_client_events(
 
     for ev in connection_failed_events.read() {
         println!("Failed to connect: {:?}", ev.err);
+    }
+}
+
+pub fn initialize_game_state(
+    mut state: ResMut<ClientState>,
+) {
+    if state.game.is_none() {
+        state.game = Some(Game::new(vec![
+            "Player 0",
+            "Player 1",
+            "Player 2",
+            "Player 3",
+        ]));
     }
 }
 
