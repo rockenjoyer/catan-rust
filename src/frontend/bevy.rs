@@ -5,6 +5,7 @@ use bevy_kira_audio::prelude::*;
 
 use bevy_quinnet::client::QuinnetClientPlugin;
 use bevy_quinnet::server::{QuinnetServerPlugin, QuinnetServer};
+use crate::frontend::bevy::config::LanOverride;
 
 use crate::backend::networking::config;
 use crate::frontend::interface::{
@@ -89,6 +90,7 @@ impl Plugin for FrontendPlugin {
             
             //resource for multiplayer
             .insert_resource(ServerPlayers::default())
+            .init_resource::<LanOverride>()
             
             //main menu systems
             .add_systems(
@@ -145,7 +147,7 @@ impl Plugin for FrontendPlugin {
             )
             .add_systems(
                 OnEnter(GameState::Joining),
-                start_connection,
+                start_connection.run_if(in_state(GameState::Joining)),
             )
             .add_systems(
                 Update,

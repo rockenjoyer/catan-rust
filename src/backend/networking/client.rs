@@ -25,7 +25,7 @@ use bevy_quinnet::{
 use crate::backend::networking::{
     protocol::*,
     bootstrap,
-    config::ConnectionMode,
+    config::{ConnectionMode, LanOverride},
 };
 use crate::backend::game::{ Game, RoadBuildingMode };
 use crate::frontend::system::transition::NetworkTransition;
@@ -224,6 +224,7 @@ pub fn initialize_game_state(
 pub fn start_connection(
     mut client: ResMut<QuinnetClient>,
     pending: Option<Res<PendingJoin>>,
+    override_addr: Option<Res<LanOverride>>,
     mut commands: Commands,
 ) {
     let Some(pending) = pending else {
@@ -231,11 +232,12 @@ pub fn start_connection(
         return;
     };
 
-    let join_code = &pending.join_code;
+    let join_code = "ABC123"; // &pending.join_code;
 
     println!("Attempting to join with code: {}", join_code);
 
-    let server_addr = bootstrap::join(ConnectionMode::LAN, join_code);
+    let override_socket_addr = override_addr.and_then(|res| res.addr);
+    let server_addr = bootstrap::join(ConnectionMode::LAN, join_code, override_socket_addr);
 
     println!("Game server address obtained: {}", server_addr);
 

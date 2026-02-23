@@ -6,7 +6,7 @@ use crate::backend::networking::config::ConnectionMode;
 use crate::backend::networking::stun_request;
 
 pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
-    let rendezvous_addr: SocketAddr = mode.rendezvous_addr();
+    let rendezvous_addr: SocketAddr = mode.rendezvous_addr(None);
     let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind host socket");
 
     println!("Rendezvous address: {}", rendezvous_addr);
@@ -60,8 +60,9 @@ pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
     }
 }
 
-pub fn join(mode: ConnectionMode, join_code: &str) -> SocketAddr {
-    let rendezvous_addr: SocketAddr = mode.rendezvous_addr();
+pub fn join(mode: ConnectionMode, join_code: &str, override_addr: Option<SocketAddr>) -> SocketAddr {
+    let rendezvous_addr: SocketAddr = mode.rendezvous_addr(override_addr);
+
     let socket = UdpSocket::bind("0.0.0.0:0")
         .expect("Failed to bind client socket");
     socket.set_nonblocking(true).unwrap();

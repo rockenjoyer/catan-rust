@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
+use std::net::SocketAddr;
 
+use crate::backend::networking::config::{ConnectionMode, LanOverride};
 use crate::frontend::interface::main_menu;
 use crate::frontend::interface::style::{apply_style, text_with_background};
 use crate::frontend::system::multiplayer::MultiplayerAction;
@@ -78,15 +80,25 @@ pub fn setup_multiplayer_menu(
                     .hint_text("Join code"),
             );
             */
+
             ui.add_space(15.0);
+
+            menu_state.join_code = "ABC123".to_string();
 
             if ui
                 .add_sized(button_size, egui::Button::new(egui::RichText::new("Join").size(font_size)))
                 .clicked()
                 && !menu_state.join_code.is_empty()
             {
+                let host_ip = format!("{}:4000", menu_state.host_ip.clone());
+                let rendezvous_addr: SocketAddr = host_ip.parse().expect("Failed to parse host IP");
+
+                commands.insert_resource(LanOverride {
+                    addr: Some(rendezvous_addr),
+                });
+                
                 commands.trigger(MultiplayerAction::Join {
-                    host_ip: format!("{}:4000", menu_state.host_ip.clone()),
+                    host_ip: host_ip.clone(),
                     code: menu_state.join_code.clone(),
                 });
             }

@@ -410,7 +410,7 @@ pub fn handle_server_events(
 }
 
 pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
-    let join_code = "".to_string();
+    let join_code = "ABC123".to_string();
 /*
     let join_code: String = rand::rng()
     .sample_iter(&Alphanumeric)
@@ -454,7 +454,7 @@ pub fn host_connect_as_client(
 ) {
     println!("Host attempting to join with code: {}", join_code.0);
 
-    let server_addr = bootstrap::join(ConnectionMode::LAN, &join_code.0);
+    let server_addr = bootstrap::join(ConnectionMode::LAN, &join_code.0, None);
 
     println!("Game server address obtained: {}", server_addr);
 

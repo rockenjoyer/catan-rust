@@ -9,13 +9,20 @@ pub enum ConnectionMode {
     REMOTE,
 }
 
+#[derive(Resource, Default)]
+pub struct LanOverride {
+    pub addr: Option<SocketAddr>,
+}
+
 impl ConnectionMode {
-    pub fn rendezvous_addr(&self) -> SocketAddr {
+    pub fn rendezvous_addr(&self, override_addr: Option<SocketAddr>) -> SocketAddr {
         match self {
             ConnectionMode::LOCAL => "127.0.0.1:4000".parse().unwrap(),
-            ConnectionMode::LAN => format!("{}:4000", get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string()))
+            ConnectionMode::LAN => override_addr.unwrap_or_else(|| {
+                format!("{}:4000", get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string()))
                 .parse()
-                .unwrap(),
+                .unwrap()
+            }),
             ConnectionMode::REMOTE => "PUBLIC_IP:4000".parse().unwrap(),
         }
     }
