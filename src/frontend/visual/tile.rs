@@ -9,6 +9,7 @@ use std::collections::HashMap;
 pub struct TileTextures {
     pub land: HashMap<Resource, egui::TextureHandle>,
     pub water: egui::TextureHandle,
+    pub robber: egui::TextureHandle,
 }
 
 #[derive(Clone, Copy)]
@@ -70,8 +71,9 @@ pub fn load_tile_textures(ctx: &egui::Context) -> TileTextures {
     land.insert(Desert, load("assets/tiles/desert.png"));
 
     let water = load("assets/tiles/water_background.png");
+    let robber = load("assets/placements/robber.png");
 
-    TileTextures { land, water }
+    TileTextures { land, water, robber }
 }
 
 pub fn tile_texture<'a>(textures: &'a TileTextures, resource: Resource) -> &'a egui::TextureHandle {
@@ -90,26 +92,24 @@ pub fn draw_tiles(
     textures: &TileTextures,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     clicked_vertex: &mut ClickedVertex,
+    zoom: Option<f32>,
+    pan: egui::Vec2,
 ) {
     //draw water background filling entire screen while maintaining aspect ratio
     let size = board_rect.size();
     let aspect_ratio = 16.0 / 9.0;
-    
+    let zoom = zoom.unwrap_or(1.0);
     let (bg_width, bg_height) = if size.x / size.y > aspect_ratio {
-        //if the screen is wider -> match width, height extends beyond screen
-        let width = size.x;
+        let width = size.x * zoom;
         (width, width / aspect_ratio)
     } else {
-        // if the screen is taller -> match height, width extends beyond screen
-        let height = size.y;
+        let height = size.y * zoom;
         (height * aspect_ratio, height)
     };
-    
     let board_rect = egui::Rect::from_center_size(
-        board_rect.center(),
+        board_rect.center() + pan,
         egui::vec2(bg_width, bg_height)
     );
-    
     painter.image(
         textures.water.id(),
         board_rect,
@@ -169,7 +169,7 @@ pub fn draw_tiles(
 
     //draw tiles with hover info
     for (i, tile) in game.tiles.iter().enumerate() {
-        draw_hex(painter, tile, i, &game.vertices, screen, textures, hovered_tile == Some(i), game.robber_tile);
+        draw_hex(painter, tile, i, &game.vertices, screen, textures, hovered_tile == Some(i), game.robber_tile, Some(zoom));
     }
 }
 
@@ -181,6 +181,7 @@ pub fn draw_vertices(
     game: &Game,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
     clicked_vertex: &mut ClickedVertex,
+    zoom: f32,
 ) {
     let vertex_response = ui.allocate_rect(board_rect, egui::Sense::click());
 
@@ -189,7 +190,7 @@ pub fn draw_vertices(
     let mouse_pos = vertex_response.hover_pos();
 
     if let Some(mouse_pos) = mouse_pos {
-        let radius = 10.0;
+        let radius = 10.0 * zoom;
         for vertex in &game.vertices {
             let pos = screen(vertex.pos);
             if mouse_pos.distance(pos) <= radius {
@@ -203,7 +204,7 @@ pub fn draw_vertices(
 
     for vertex in &game.vertices {
         let pos = screen(vertex.pos);
-        let radius = 10.0;
+        let radius = 10.0 * zoom;
 
         //check if any player has a settlement or city here
         let mut is_occupied = false;
@@ -228,14 +229,14 @@ pub fn draw_vertices(
             };
 
             painter.circle_filled(pos, radius, color);
-            painter.circle_stroke(pos, radius, egui::Stroke::new(2.0, egui::Color32::BLACK));
-        
+            painter.circle_stroke(pos, radius, egui::Stroke::new(2.0 * zoom.max(1.0), egui::Color32::BLACK));
+
             //draw vertex ID on top
             painter.text(
                 pos,
                 egui::Align2::CENTER_CENTER,
                 vertex.id.to_string(),
-                egui::FontId::proportional(14.0),
+                egui::FontId::proportional(14.0 * zoom),
                 egui::Color32::BLACK,
             );
         }
@@ -266,6 +267,7 @@ fn draw_hex(
     textures: &TileTextures,
     is_hovered: bool,
     robber_tile: usize,
+    zoom: Option<f32>,
 ) {
     //convert all of the hex vertices from game coords to pixel coords
     let points: Vec<_> = tile
@@ -319,20 +321,23 @@ fn draw_hex(
 
     //draw robber badge if this tile has the robber
     if index == robber_tile {
+        //scale robber badge with zoom
+        let zoom = zoom.unwrap_or(1.0);
         //position badge at top-right of tile, outside the center area
         let badge_pos = center.to_pos2() + egui::vec2(20.0, -15.0) + egui::vec2(0.0, lift);
-        let badge_radius = 15.0;
-        
+        let badge_radius = 20.0 * zoom;
         //draw badge circle with black background
-        painter.circle_filled(badge_pos, badge_radius, egui::Color32::from_rgb(40, 40, 40));
-        painter.circle_stroke(badge_pos, badge_radius, egui::Stroke::new(2.0, egui::Color32::from_rgb(200, 50, 50)));
-        
+        painter.circle_filled(badge_pos, badge_radius, egui::Color32::from_hex("#000000c9").unwrap());
+        painter.circle_stroke(badge_pos, badge_radius, egui::Stroke::new(3.0 * zoom, egui::Color32::from_hex("#822f2fd7").unwrap()));
         //draw robber icon
-        painter.text(
+        let badge_rect = egui::Rect::from_center_size(
             badge_pos,
-            egui::Align2::CENTER_CENTER,
-            "R",
-            egui::FontId::proportional(18.0),
+            egui::vec2(badge_radius * 2.0, badge_radius * 2.0),
+        );
+        painter.image(
+            textures.robber.id(),
+            badge_rect,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
             egui::Color32::WHITE,
         );
     }

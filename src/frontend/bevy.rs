@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use bevy::window::{Window, WindowMode};
 use bevy_egui::EguiPlugin;
 use bevy_kira_audio::prelude::*;
+use bevy_wicon::WindowIconPlugin;
+use std::path::PathBuf;
 
 use bevy_quinnet::client::QuinnetClientPlugin;
 use bevy_quinnet::server::{QuinnetServerPlugin, QuinnetServer};
@@ -9,12 +11,10 @@ use crate::frontend::bevy::config::LanOverride;
 
 use crate::backend::networking::config;
 use crate::frontend::interface::{
-    game_panel_wip_broken, info_panel, settings_panel, log_panel, main_menu, multiplayer_menu, lobby_menu,
+    endscreen, game_panel, info_panel, log_panel, main_menu, settings_panel,
 };
-
-use crate::frontend::system::transition::NetworkTransition;
-use crate::frontend::system::{audio, camera, multiplayer::{handle_multiplayer_action, HostState}, transition::handle_network_transition};
-use crate::frontend::visual::{cards, city, road, settlement, tile, dice, startscreen};
+use crate::frontend::system::{audio, camera};
+use crate::frontend::visual::{cards, city, dice, road, settlement, startscreen, tile};
 
 use crate::backend::networking::rendezvous::RendezvousServer;
 use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server, ServerAddr};
@@ -29,6 +29,7 @@ pub enum GameState {
     Hosting,
     Joining,
     InGame,
+    EndScreen,
 }
 
 pub struct FrontendPlugin;
@@ -45,11 +46,13 @@ impl Plugin for FrontendPlugin {
                 }),
                 ..default()
             }))
-            //background-color
-            .insert_resource(ClearColor(Color::WHITE))
+            //set window icon
+            .add_plugins(WindowIconPlugin::with_path(
+                resolve_window_icon_path().as_str(),
+            ))
+            //egui plugin for UI
             .add_plugins(EguiPlugin::default())
-
-            //audio plugin for background music
+            //audio plugins for background music and sound effects
             .add_plugins(AudioPlugin::default())
 
             //add quinnet plugins for client and server
@@ -63,22 +66,43 @@ impl Plugin for FrontendPlugin {
             .add_observer(handle_network_transition)
             .add_observer(handle_multiplayer_action)
 
+            .add_audio_channel::<audio::MusicChannel>()
+            .add_audio_channel::<audio::SoundEffectsChannel>()
+            //state management
+            .init_state::<GameState>()
             //startup runs once
             .add_systems(
                 Startup,
+                (audio::play_background_music, camera::setup_camera),
+            )
+            //update runs every frame
+            .add_systems(
+                Update,
                 (
                     audio::play_background_music,
                     camera::setup_camera,
                     start_terminal_listener,
+                    audio::play_click_sound,
+                    audio::play_sound_on_roll,
+                    audio::play_sound_on_placement,
                 ),
             )
-
+            //check for endgame condition during the game
+            .add_systems(
+                Update,
+                (endscreen::check_for_endgame).run_if(in_state(GameState::InGame)),
+            )
             //resources for game state
             .insert_resource(tile::ClickedVertex::default())
             .insert_resource(game_panel_wip_broken::RoadBuildingState::default())
             .insert_resource(game_panel_wip_broken::BuildingMode::default())
             .insert_resource(game_panel_wip_broken::DevCardPlayState::default())
             .insert_resource(game_panel_wip_broken::RobberMoveState::default())
+            .insert_resource(game_panel::RoadBuildingState::default())
+            .insert_resource(game_panel::BuildingMode::default())
+            .insert_resource(game_panel::DevCardPlayState::default())
+            .insert_resource(game_panel::RobberMoveState::default())
+            .insert_resource(game_panel::BuildEffectsState::default())
             .insert_resource(dice::DiceRollState::default())
             .insert_resource(log_panel::GameLog::default())
             .insert_resource(audio::AudioState::default())
@@ -92,6 +116,8 @@ impl Plugin for FrontendPlugin {
             .insert_resource(ServerPlayers::default())
             .init_resource::<LanOverride>()
             
+            .insert_resource(settings_panel::SettingsPanelState::default())
+            .insert_resource(endscreen::EndscreenState::default())
             //main menu systems
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
@@ -100,7 +126,8 @@ impl Plugin for FrontendPlugin {
                     startscreen::setup_logo,
                     main_menu::setup_main_menu,
                     settings_panel::setup_settings,
-                ).run_if(in_state(GameState::MainMenu)),
+                )
+                    .run_if(in_state(GameState::MainMenu)),
             )
             //multiplayer menu system
             .add_systems(
@@ -118,7 +145,6 @@ impl Plugin for FrontendPlugin {
                     cards::setup_cards_textures,
                     settlement::setup_settlement_textures,
                     city::setup_city_textures,
-                    
                     //UI panels (run after textures loaded)
                     info_panel::setup_info,
                     game_panel_wip_broken::setup_game,
@@ -177,6 +203,48 @@ impl Plugin for FrontendPlugin {
                 Update,
                 handle_terminal_messages
                     .run_if(resource_exists::<TerminalReceiver>),
+                )
+                    .run_if(in_state(GameState::InGame)),
+            )
+            //endscreen systems
+            .add_systems(
+                bevy_egui::EguiPrimaryContextPass,
+                (
+                    startscreen::setup_startscreen_texture,
+                    startscreen::setup_logo,
+                    endscreen::setup_endscreen,
+                    settings_panel::setup_settings,
+                    audio::play_win_sound,
+                )
+                    .run_if(in_state(GameState::EndScreen)),
             );
     }
+}
+
+//try common locations so icons resolve in both terminal and .exe runs
+fn resolve_window_icon_path() -> String {
+    let relative = PathBuf::from("assets/game/icon.ico");
+
+    let mut possible = Vec::new();
+    possible.push(relative.clone());
+
+    //check the current working directory (terminal)
+    if let Ok(cwd) = std::env::current_dir() {
+        possible.push(cwd.join(&relative));
+    }
+
+    //check the executable directory (.exe)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            possible.push(dir.join(&relative));
+        }
+    }
+
+    //return the first path that exists or fallback to relative
+    possible
+        .into_iter()
+        .find(|path| path.exists())
+        .unwrap_or(relative)
+        .to_string_lossy()
+        .to_string()
 }

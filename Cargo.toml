@@ -2,6 +2,16 @@
 name = "catan-rust"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
+
+[package.metadata.bundle]
+name = "catan-rust"
+identifier = "com.example.catan-rust"
+icon = ["assets/game/icon.icns"]
+resources = ["assets"]
+
+[build-dependencies]
+winres = "0.1"
 
 [dependencies]
 bevy = { version = "0.18" }
@@ -29,6 +39,8 @@ postcard = { version = "1.1.3", features = ["alloc", "use-std"] }
 bytes = "1.11.0"
 bincode = "1.3.3"
 stun = "0.9.0"
+bevy-wicon = "0.18.1"
+oorandom = "11.1.5"
 
 [lib]
 name = "catan_rust"
