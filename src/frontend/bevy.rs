@@ -79,8 +79,6 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Update,
                 (
-                    audio::play_background_music,
-                    camera::setup_camera,
                     start_terminal_listener,
                     audio::play_click_sound,
                     audio::play_sound_on_roll,
