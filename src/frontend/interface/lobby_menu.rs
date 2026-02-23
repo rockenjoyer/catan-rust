@@ -57,6 +57,7 @@ pub fn setup_lobby_menu(
             // Join code is not needed since the host's local IPv4 adress is needed and can server its purpose
             if host_state.is_host {
                 let local_ip: String = ConnectionMode::LAN.to_string();
+                let local_ip = local_ip.split(':').next().unwrap().to_string();
                 text_with_background(ui, format!("Join code: \n{}", local_ip), text_size);
                 
                 ui.add_space(10.0);
