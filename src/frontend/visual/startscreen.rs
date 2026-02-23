@@ -111,6 +111,34 @@ pub fn draw_background(
         egui::Color32::WHITE,
     );
 
+    //falling particles effect
+    let now = ui.input(|i| i.time) as f32;
+    let particle_count = 50;
+    let mut rng = oorandom::Rand32::new(0);
+    for i in 0..particle_count {
+        let i = i as f32;
+        //each particle has a horizontal offset and speed
+        let base_x = rng.rand_float() * bg_width;
+        let speed = 20.0 + 25.0 * rng.rand_float(); //pixels per second
+        //for a staggered start
+        let phase = rng.rand_float(); 
+        //vertical position is based on time, speed, and phase
+        let time = (now + phase * 10.0) * speed;
+
+        //y wraps around for a coninuous falling effect
+        let y = (time % (bg_height + 40.0)) - 20.0;
+        let pos = egui::pos2(bg_rect.left() + base_x, bg_rect.top() + y);
+        //radius with a pulsing effect
+        let radius = 8.0 + 4.0 * (i * 0.5 + now).sin();
+
+        //base color with randomized alpha channel
+        let base = egui::Color32::from_hex("#613426fb").unwrap();
+        let alpha = (120.0 + 80.0 * (i + now * 0.7).sin()) as u8;
+        let color = egui::Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), alpha);
+
+        ui.painter().circle_filled(pos, radius, color);
+    }
+
     //draw logo on top, also with dynamic scaling
     let logo_size = logo_image.logo.size_vec2();
     let max_logo_width = available_size.x * 0.7;

@@ -64,6 +64,7 @@ pub fn draw_settlements(
     game: &Game,
     textures: &SettlementTextures,
     screen: &dyn Fn((f32, f32)) -> egui::Pos2,
+    zoom: f32,
 ) {
     for player in &game.players {
         let texture = match player.id {
@@ -76,12 +77,12 @@ pub fn draw_settlements(
 
         for &vertex_id in &player.settlements {
             let pos = screen(game.vertices[vertex_id].pos);
-            let rect = egui::Rect::from_center_size(pos, egui::vec2(35.7, 50.0));
+            let rect = egui::Rect::from_center_size(pos, egui::vec2(35.7 * zoom, 50.0 * zoom));
 
             //draw shadow
             painter.image(
                 texture.id(),
-                rect.translate(egui::vec2(0.0, 3.0)),
+                rect.translate(egui::vec2(0.0, 3.0 * zoom)),
                 egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
                 egui::Color32::from_black_alpha(100),
             );
