@@ -45,17 +45,3 @@ oorandom = "11.1.5"
 [lib]
 name = "catan_rust"
 path = "src/lib.rs"
-
-[[bin]]
-name = "server"
-path = "src/networking/bin/server.rs"
-
-[[bin]]
-name = "client"
-path = "src/networking/bin/client.rs"
-
-[[bin]]
-name = "randy"
-path = "src/networking/bin/rendezvous.rs"
-
-

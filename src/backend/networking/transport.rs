@@ -13,7 +13,7 @@ use bevy_quinnet::{
     }
 };
 
-use crate::networking::protocol::{ServerMessage, ClientMessage};
+use crate::backend::networking::protocol::{ServerMessage, ClientMessage};
 
 
 pub struct ServerTransport {

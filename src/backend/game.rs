@@ -1,8 +1,12 @@
 use rand::seq::{IndexedRandom, SliceRandom};
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+use std::collections::{HashMap, HashSet};
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Resource {
     Brick,
     Lumber,
@@ -12,14 +16,14 @@ pub enum Resource {
     Desert,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GamePhase {
     SetupRound1,    //clockwise
     SetupRound2,    //counter clockwise
     NormalPlay,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnPhase{
     RollResources,
     Trade,
@@ -27,7 +31,7 @@ pub enum TurnPhase{
     EndTurn,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DevCard {
     Knight,
     VictoryPoint,
@@ -37,14 +41,14 @@ pub enum DevCard {
 }
 
 //dev card struct (to give them an age)
-#[derive(Clone, Debug, Copy)]
+#[derive(Serialize, Deserialize, Clone, Debug, Copy)]
 pub struct DevCardInstance {
     pub card: DevCard,
     pub age: usize,
 }
 
 //tracks input for dev cards
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum DevCardInput {
     None,
     Knight { tile: usize, victim: Option<usize> },
@@ -54,14 +58,14 @@ pub enum DevCardInput {
 }
 
 //determines if a road is constructed regularly or using a roadbuilding dev card
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RoadBuildingMode {
     Normal,
     DevCardMode,
 }
 
 //vertices at hex corners
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Vertex {
     pub id: usize,
     pub pos: (f32, f32), //added pos variable for usage as vertices on the UI board
@@ -84,7 +88,7 @@ impl Vertex {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Tile {
     pub resource: Resource,
     pub number_token: Option<u8>,
@@ -92,13 +96,13 @@ pub struct Tile {
 }
 
 //harbor can be generic or have a specific resource
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HarborType {
     Generic,            
     Resource(Resource), 
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, Debug, Copy, Clone)]
 pub struct Harbor {
     pub loc0: usize, 
     pub loc1: usize,
@@ -129,7 +133,7 @@ const HARBOR_PATTERN_2: &[(usize, usize)] = &[
     (22, 23),
 ];
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Player {
     pub id: usize,
     pub name: String,
@@ -160,6 +164,8 @@ impl Player {
     }
 }
 
+
+#[derive(Debug)]
 pub struct Game {
     pub players: Vec<Player>,
     pub vertices: Vec<Vertex>,
@@ -174,14 +180,14 @@ pub struct Game {
     pub largest_army_owner: Option<usize>,
     pub longest_road_owner: Option<usize>,
     pub longest_road_length: usize,
-    rng: rand::rngs::ThreadRng, //local random number generator
+    rng: rand::rngs::SmallRng, //local random number generator
 }
 
 impl Game {
     pub fn new(player_names: Vec<&str>) -> Self {
 
         //local random number generator
-        let mut rng = rand::rng();
+        let mut rng = SmallRng::seed_from_u64(1);
         //checks if the player number is 2-4
         assert!((2..=4).contains(&player_names.len()));
 
@@ -232,9 +238,28 @@ impl Game {
             rng,
         }
     }
-
-    pub fn generate_board_from_coords(
-        rng: &mut rand::rngs::ThreadRng,
+/*
+    pub fn from_dto(dto: crate::backend::networking::protocol::GameDTO) -> Self {
+        Game {
+            players: dto.players,
+            vertices: dto.vertices,
+            tiles: dto.tiles,
+            harbors: dto.harbors,
+            robber_tile: dto.robber_tile,
+            current_player: dto.current_player,
+            dev_card_pool: dto.dev_card_pool,
+            turn_phase: dto.turn_phase,
+            game_phase: dto.game_phase,
+            setup_placement: dto.setup_placement,
+            largest_army_owner: dto.largest_army_owner,
+            longest_road_owner: dto.longest_road_owner,
+            longest_road_length: dto.longest_road_length,
+            rng: SmallRng::seed_from_u64(1),
+        }
+    }
+*/
+    pub fn generate_board_from_coords<R: Rng + ?Sized>(
+        rng: &mut R,
         hex_coords: Vec<(i32, i32)>
     ) -> (Vec<Vertex>, Vec<Tile>) {
 
@@ -344,7 +369,7 @@ impl Game {
         (vertices, tiles)
     }
     
-    pub fn generate_board(rng: &mut rand::rngs::ThreadRng) -> (Vec<Vertex>, Vec<Tile>) {
+    pub fn generate_board<R: Rng + ?Sized>(rng: &mut R) -> (Vec<Vertex>, Vec<Tile>) {
         
         //hex coordinates for a normal 19 tile map
         let hex_coords = vec![
@@ -358,8 +383,8 @@ impl Game {
         Self::generate_board_from_coords(rng, hex_coords)
     }
 
-    pub fn generate_board_custom(
-        rng: &mut rand::rngs::ThreadRng,
+    pub fn generate_board_custom<R: Rng + ?Sized>(
+        rng: &mut R,
 
         //vector of coordinates for custom shaped boards
         hex_coords: Vec<(i32, i32)>,
@@ -459,7 +484,7 @@ impl Game {
     }
 
     //2d6 rolls
-    pub fn roll_dice(&mut self) -> (u8, bool) {
+    pub fn roll_dice(&mut self) -> (u8, u8, bool) {
         let die1 = self.rng.random_range(1..=6);
         let die2 = self.rng.random_range(1..=6);
         let total = die1 + die2;
@@ -467,11 +492,11 @@ impl Game {
         if total == 7 {
             //discard cards but don't move robber yet
             self.robbery();
-            (total, true) //signal UI to handle robber movement
+            (die1, die2, true) //signal UI to handle robber movement
 
         } else {
             self.distribute_resources(total);
-            (total, false)
+            (die1, die2, false)
         }
     }
 

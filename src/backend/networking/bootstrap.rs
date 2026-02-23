@@ -2,11 +2,11 @@ use std::net::{UdpSocket, SocketAddr, IpAddr};
 use std::time::{Duration, Instant};
 use std::thread::sleep;
 
-use crate::networking::config::ConnectionMode;
-use crate::networking::stun_request;
+use crate::backend::networking::config::ConnectionMode;
+use crate::backend::networking::stun_request;
 
 pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
-    let rendezvous_addr: SocketAddr = mode.rendezvous_addr();
+    let rendezvous_addr: SocketAddr = mode.rendezvous_addr(None);
     let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind host socket");
 
     println!("Rendezvous address: {}", rendezvous_addr);
@@ -40,7 +40,7 @@ pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
 
     let mut buf = [0u8; 512];
     let start_time = Instant::now();
-    let timeout = Duration::from_secs(5);
+    let timeout = Duration::from_secs(10);
 
     loop {
         if let Ok((len, _)) = socket.recv_from(&mut buf) {
@@ -60,8 +60,9 @@ pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
     }
 }
 
-pub fn join(mode: ConnectionMode, join_code: &str) -> SocketAddr {
-    let rendezvous_addr: SocketAddr = mode.rendezvous_addr();
+pub fn join(mode: ConnectionMode, join_code: &str, override_addr: Option<SocketAddr>) -> SocketAddr {
+    let rendezvous_addr: SocketAddr = mode.rendezvous_addr(override_addr);
+
     let socket = UdpSocket::bind("0.0.0.0:0")
         .expect("Failed to bind client socket");
     socket.set_nonblocking(true).unwrap();

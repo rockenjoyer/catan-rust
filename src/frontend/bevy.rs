@@ -5,16 +5,29 @@ use bevy_kira_audio::prelude::*;
 use bevy_wicon::WindowIconPlugin;
 use std::path::PathBuf;
 
+use bevy_quinnet::client::QuinnetClientPlugin;
+use bevy_quinnet::server::{QuinnetServerPlugin, QuinnetServer};
+use crate::frontend::bevy::config::LanOverride;
+
+use crate::backend::networking::config;
 use crate::frontend::interface::{
     endscreen, game_panel, info_panel, log_panel, main_menu, settings_panel,
 };
 use crate::frontend::system::{audio, camera};
 use crate::frontend::visual::{cards, city, dice, road, settlement, startscreen, tile};
 
+use crate::backend::networking::rendezvous::RendezvousServer;
+use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server, ServerAddr};
+use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState, start_terminal_listener, TerminalReceiver, initialize_game_state};
+
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
     #[default]
     MainMenu,
+    MultiplayerMenu,
+    Lobby,
+    Hosting,
+    Joining,
     InGame,
     EndScreen,
 }
@@ -41,6 +54,18 @@ impl Plugin for FrontendPlugin {
             .add_plugins(EguiPlugin::default())
             //audio plugins for background music and sound effects
             .add_plugins(AudioPlugin::default())
+
+            //add quinnet plugins for client and server
+            .add_plugins(QuinnetClientPlugin::default())
+            .add_plugins(QuinnetServerPlugin::default())
+
+            //state management
+            .init_state::<GameState>()
+
+            //event observers for multiplayer
+            .add_observer(handle_network_transition)
+            .add_observer(handle_multiplayer_action)
+
             .add_audio_channel::<audio::MusicChannel>()
             .add_audio_channel::<audio::SoundEffectsChannel>()
             //state management
@@ -54,6 +79,9 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Update,
                 (
+                    audio::play_background_music,
+                    camera::setup_camera,
+                    start_terminal_listener,
                     audio::play_click_sound,
                     audio::play_sound_on_roll,
                     audio::play_sound_on_placement,
@@ -66,6 +94,10 @@ impl Plugin for FrontendPlugin {
             )
             //resources for game state
             .insert_resource(tile::ClickedVertex::default())
+            .insert_resource(game_panel_wip_broken::RoadBuildingState::default())
+            .insert_resource(game_panel_wip_broken::BuildingMode::default())
+            .insert_resource(game_panel_wip_broken::DevCardPlayState::default())
+            .insert_resource(game_panel_wip_broken::RobberMoveState::default())
             .insert_resource(game_panel::RoadBuildingState::default())
             .insert_resource(game_panel::BuildingMode::default())
             .insert_resource(game_panel::DevCardPlayState::default())
@@ -75,6 +107,15 @@ impl Plugin for FrontendPlugin {
             .insert_resource(log_panel::GameLog::default())
             .insert_resource(audio::AudioState::default())
             .insert_resource(main_menu::MainMenuState::default())
+            .insert_resource(multiplayer_menu::MultiplayerMenuState::default())
+            .insert_resource(config::GameMode::Local)
+            .insert_resource(HostState::default())
+            .insert_resource(ClientState::default())
+            
+            //resource for multiplayer
+            .insert_resource(ServerPlayers::default())
+            .init_resource::<LanOverride>()
+            
             .insert_resource(settings_panel::SettingsPanelState::default())
             .insert_resource(endscreen::EndscreenState::default())
             //main menu systems
@@ -88,6 +129,12 @@ impl Plugin for FrontendPlugin {
                 )
                     .run_if(in_state(GameState::MainMenu)),
             )
+            //multiplayer menu system
+            .add_systems(
+                bevy_egui::EguiPrimaryContextPass,
+                multiplayer_menu::setup_multiplayer_menu
+                    .run_if(in_state(GameState::MultiplayerMenu)),
+            )
             //egui pass: texture loading and UI systems
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
@@ -100,9 +147,62 @@ impl Plugin for FrontendPlugin {
                     city::setup_city_textures,
                     //UI panels (run after textures loaded)
                     info_panel::setup_info,
-                    game_panel::setup_game,
+                    game_panel_wip_broken::setup_game,
                     settings_panel::setup_settings,
                     log_panel::setup_log_panel,
+                ).run_if(in_state(GameState::InGame)),
+            )
+            .add_systems(
+                OnEnter(GameState::InGame),
+                initialize_game_state,
+            )
+            .add_systems(
+                bevy_egui::EguiPrimaryContextPass,
+                lobby_menu::setup_lobby_menu
+                    .run_if(in_state(GameState::Lobby)),
+            )
+            .add_systems(
+                OnEnter(GameState::Hosting), 
+                (
+                    start_server.run_if(|host_state: Res<HostState>| host_state.is_host), 
+                    host_connect_as_client
+                        .after(start_server)
+                        .run_if(|host_state: Res<HostState>| host_state.is_host)
+                        .run_if(resource_exists::<ServerAddr>),
+                    ),
+            )
+            .add_systems(
+                OnEnter(GameState::Joining),
+                start_connection.run_if(in_state(GameState::Joining)),
+            )
+            .add_systems(
+                Update,
+                handle_server_events
+                    .run_if(|server_game: Option<Res<ServerGame>>| server_game.is_some())
+                    .run_if(in_state(GameState::Hosting)),
+            )
+            .add_systems(
+                Update,
+                handle_client_messages
+                    .run_if(resource_exists::<ServerGame>)
+                    .run_if(resource_exists::<ServerPhase>)
+                    .run_if(resource_exists::<QuinnetServer>)
+                    .run_if(not(in_state(GameState::MainMenu))
+                    .and(not(in_state(GameState::MultiplayerMenu))))
+            )
+            .add_systems(
+                Update,
+                (handle_client_events, handle_server_messages)
+                    .run_if(
+                        in_state(GameState::Joining)
+                        .or(in_state(GameState::Hosting))
+                        .or(in_state(GameState::Lobby)) 
+                    ),
+            )
+            .add_systems(
+                Update,
+                handle_terminal_messages
+                    .run_if(resource_exists::<TerminalReceiver>),
                 )
                     .run_if(in_state(GameState::InGame)),
             )
