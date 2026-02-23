@@ -11,9 +11,9 @@ use crate::frontend::bevy::config::LanOverride;
 
 use crate::backend::networking::config;
 use crate::frontend::interface::{
-    endscreen, game_panel, info_panel, log_panel, main_menu, settings_panel,
+    endscreen, game_panel, info_panel, log_panel, main_menu, settings_panel, multiplayer_menu, lobby_menu,
 };
-use crate::frontend::system::{audio, camera};
+use crate::frontend::system::{audio, camera, transition::*, multiplayer::*};
 use crate::frontend::visual::{cards, city, dice, road, settlement, startscreen, tile};
 
 use crate::backend::networking::rendezvous::RendezvousServer;
@@ -94,10 +94,6 @@ impl Plugin for FrontendPlugin {
             )
             //resources for game state
             .insert_resource(tile::ClickedVertex::default())
-            .insert_resource(game_panel_wip_broken::RoadBuildingState::default())
-            .insert_resource(game_panel_wip_broken::BuildingMode::default())
-            .insert_resource(game_panel_wip_broken::DevCardPlayState::default())
-            .insert_resource(game_panel_wip_broken::RobberMoveState::default())
             .insert_resource(game_panel::RoadBuildingState::default())
             .insert_resource(game_panel::BuildingMode::default())
             .insert_resource(game_panel::DevCardPlayState::default())
@@ -147,7 +143,7 @@ impl Plugin for FrontendPlugin {
                     city::setup_city_textures,
                     //UI panels (run after textures loaded)
                     info_panel::setup_info,
-                    game_panel_wip_broken::setup_game,
+                    game_panel::setup_game,
                     settings_panel::setup_settings,
                     log_panel::setup_log_panel,
                 ).run_if(in_state(GameState::InGame)),
@@ -202,8 +198,7 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Update,
                 handle_terminal_messages
-                    .run_if(resource_exists::<TerminalReceiver>),
-                )
+                    .run_if(resource_exists::<TerminalReceiver>)
                     .run_if(in_state(GameState::InGame)),
             )
             //endscreen systems

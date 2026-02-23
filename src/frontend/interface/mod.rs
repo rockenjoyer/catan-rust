@@ -5,3 +5,5 @@ pub mod style;
 pub mod log_panel;
 pub mod main_menu;
 pub mod endscreen;
+pub mod lobby_menu;
+pub mod multiplayer_menu;
