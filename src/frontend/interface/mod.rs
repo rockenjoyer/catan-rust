@@ -1,9 +1,9 @@
-pub mod game_panel_old;
+pub mod game_panel;
 pub mod info_panel;
 pub mod settings_panel;
 pub mod style;
 pub mod log_panel;
 pub mod main_menu;
 pub mod multiplayer_menu;
-pub mod game_panel;
+pub mod game_panel_wip_broken;
 pub mod lobby_menu;

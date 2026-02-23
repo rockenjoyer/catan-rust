@@ -69,7 +69,7 @@ pub fn on_app_exit(
 }
 
 pub fn handle_server_messages(
-    mut state: ClientState,
+    mut state: ResMut<ClientState>,
     mut client: ResMut<QuinnetClient>,
     mut commands: Commands,
 ) {

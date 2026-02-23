@@ -35,3 +35,29 @@ pub fn apply_style(ctx: &egui::Context) {
         style.visuals.override_text_color = Some(egui::Color32::WHITE);
     });
 }
+
+pub fn text_with_background(
+    ui: &mut egui::Ui,
+    text: String,
+    font_size: f32,
+) -> egui::Response {
+    let text_str = text.to_string().replace('\n', " ");
+
+    let galley = ui.fonts_mut(|f| {
+        f.layout_no_wrap(
+            text_str.clone(),
+            egui::FontId::proportional(font_size),
+            egui::Color32::WHITE,
+        )
+    });
+    let text_size = egui::vec2(galley.rect.width(), font_size);
+    let (_, rect) = ui.allocate_space(text_size + egui::vec2(20.0, 10.0));
+
+    ui.painter().rect_filled(
+        rect,
+        egui::CornerRadius::same(5),
+        egui::Color32::from_rgba_unmultiplied(120, 80, 60, 200),
+    );
+
+    ui.put(rect, egui::Label::new(text_str))
+}

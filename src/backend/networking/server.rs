@@ -410,7 +410,7 @@ pub fn handle_server_events(
 }
 
 pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
-    let join_code = "ABC123".to_string();
+    let join_code = "".to_string();
 /*
     let join_code: String = rand::rng()
     .sample_iter(&Alphanumeric)

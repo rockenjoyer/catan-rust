@@ -371,7 +371,7 @@ fn window_frame() -> egui::Frame {
         .corner_radius(egui::CornerRadius::same(10))
 }
 
-fn button_style(ui: &mut egui::Ui) {
+pub fn button_style(ui: &mut egui::Ui) {
     let button_color = egui::Color32::from_hex("#724235ec").unwrap();
     let outline_color = egui::Color32::from_hex("#3e211a").unwrap();
 

@@ -1,24 +1,37 @@
-use std::net::SocketAddr;
 use bevy::prelude::*;
+use std::net::{SocketAddr, UdpSocket};
+use std::io;
+use std::fmt;
 
 pub enum ConnectionMode {
-    LOCAL,  
-    LAN,      
-    REMOTE,   
+    LOCAL,
+    LAN,
+    REMOTE,
 }
 
 impl ConnectionMode {
     pub fn rendezvous_addr(&self) -> SocketAddr {
         match self {
             ConnectionMode::LOCAL => "127.0.0.1:4000".parse().unwrap(),
-            ConnectionMode::LAN => "192.168.2.114:4000".parse().unwrap(),  
+            ConnectionMode::LAN => format!("{}:4000", get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string()))
+                .parse()
+                .unwrap(),
             ConnectionMode::REMOTE => "PUBLIC_IP:4000".parse().unwrap(),
         }
     }
 
     pub fn use_stun(&self) -> bool {
-        let use_stun = matches!(self, ConnectionMode::REMOTE);
-        use_stun
+        matches!(self, ConnectionMode::REMOTE)
+    }
+}
+
+impl fmt::Display for ConnectionMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConnectionMode::LAN => 
+                 write!(f, "{}:4000", get_local_ip().unwrap_or_else(|_| "127.0.0.1".to_string())),
+            _ => write!(f, ""),
+        }
     }
 }
 
@@ -38,4 +51,11 @@ pub enum AppState {
     Lobby,
     Joining,
     InGame,
+}
+
+fn get_local_ip() -> io::Result<String> {
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+    socket.connect("8.8.8.8:80")?;
+    let local_addr = socket.local_addr()?;
+    Ok(local_addr.ip().to_string())
 }

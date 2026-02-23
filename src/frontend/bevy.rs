@@ -8,7 +8,7 @@ use bevy_quinnet::server::{QuinnetServerPlugin, QuinnetServer};
 
 use crate::backend::networking::config;
 use crate::frontend::interface::{
-    game_panel, info_panel, settings_panel, log_panel, main_menu, multiplayer_menu, lobby_menu,
+    game_panel_wip_broken, info_panel, settings_panel, log_panel, main_menu, multiplayer_menu, lobby_menu,
 };
 
 use crate::frontend::system::transition::NetworkTransition;
@@ -74,10 +74,10 @@ impl Plugin for FrontendPlugin {
 
             //resources for game state
             .insert_resource(tile::ClickedVertex::default())
-            .insert_resource(game_panel::RoadBuildingState::default())
-            .insert_resource(game_panel::BuildingMode::default())
-            .insert_resource(game_panel::DevCardPlayState::default())
-            .insert_resource(game_panel::RobberMoveState::default())
+            .insert_resource(game_panel_wip_broken::RoadBuildingState::default())
+            .insert_resource(game_panel_wip_broken::BuildingMode::default())
+            .insert_resource(game_panel_wip_broken::DevCardPlayState::default())
+            .insert_resource(game_panel_wip_broken::RobberMoveState::default())
             .insert_resource(dice::DiceRollState::default())
             .insert_resource(log_panel::GameLog::default())
             .insert_resource(audio::AudioState::default())
@@ -119,7 +119,7 @@ impl Plugin for FrontendPlugin {
                     
                     //UI panels (run after textures loaded)
                     info_panel::setup_info,
-                    game_panel::setup_game,
+                    game_panel_wip_broken::setup_game,
                     settings_panel::setup_settings,
                     log_panel::setup_log_panel,
                 ).run_if(in_state(GameState::InGame)),

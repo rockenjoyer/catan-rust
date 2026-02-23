@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-use bevy_egui::egui::mutex::Mutex;
 use bevy_egui::{EguiContexts, egui};
 use bevy_quinnet::client::QuinnetClient;
 use std::cell::RefCell;
@@ -7,7 +6,6 @@ use std::rc::Rc;
 use std::collections::HashMap;
 
 use crate::backend::networking::config::GameMode;
-use crate::backend::networking::game_request::*;
 use crate::backend::game::{Game, GamePhase, RoadBuildingMode, Resource as GameResource, DevCard, DevCardInput};
 use crate::frontend::interface::style::apply_style;
 use crate::frontend::interface::log_panel::GameLog;
@@ -60,37 +58,22 @@ pub struct RobberMoveState {
     pub selected_victim: Option<usize>,
 }
 
-#[derive(Resource)]
-struct InterimGame {
-    inner: Mutex<Game>,
-}
-
-impl InterimGame {
-    pub fn new(game: Game) -> Self {
-        Self {
-            inner: Mutex::new(game),
-        }
-    }
-}
-
 pub fn setup_game(
     mut context: EguiContexts,
     game: NonSend<Rc<RefCell<Game>>>,
-    mode: Res<GameMode>,
-    mut client: ResMut<QuinnetClient>,
     mut clicked_vertex: ResMut<ClickedVertex>,
     mut road_state: ResMut<RoadBuildingState>,
     mut dice_state: ResMut<DiceRollState>,
     mut building_mode: ResMut<BuildingMode>,
     mut dev_card_state: ResMut<DevCardPlayState>,
     mut robber_state: ResMut<RobberMoveState>,
-    //mut game_log: ResMut<GameLog>,
+    mut game_log: ResMut<GameLog>,
     tile_textures: Option<Res<TileTextures>>,
     road_textures: Option<Res<RoadTextures>>,
     card_textures: Option<Res<CardsTextures>>,
     settlement_textures: Option<Res<SettlementTextures>>,
     city_textures: Option<Res<CityTextures>>,
-    //time: Res<Time>,
+    time: Res<Time>,
 ) {
     //wait for textures to load
     let Some(tile_textures) = tile_textures else { 
@@ -118,7 +101,7 @@ pub fn setup_game(
         apply_style(context);
 
         //update dice animation
-        //dice_state.update(time.delta_secs());
+        dice_state.update(time.delta_secs());
 
         //read game state for UI display
         let (current_phase, current_player_name, current_player_id, setup_placement, player_resources, player_settlements, player_dev_cards_vec) = {
@@ -572,7 +555,7 @@ pub fn setup_game(
                                         if ui.button("Build Road (Brick + Lumber)").clicked() {
                                             *building_mode = BuildingMode::BuildingRoad;
                                             road_state.last_two_vertices.clear();
-                                            //game_log.add_info(format!("Road building mode activated"), time.elapsed_secs());
+                                            game_log.add_info(format!("Road building mode activated"), time.elapsed_secs());
                                         }
                                     } else {
                                         ui.add_enabled(false, egui::Button::new("Build Road (Need: Brick + Lumber)"));
@@ -581,7 +564,7 @@ pub fn setup_game(
                                     if has_settlement_resources {
                                         if ui.button("Build Settlement (Brick + Lumber + Wool + Grain)").clicked() {
                                             *building_mode = BuildingMode::BuildingSettlement;
-                                            //game_log.add_info(format!("Settlement building mode activated"), time.elapsed_secs());
+                                            game_log.add_info(format!("Settlement building mode activated"), time.elapsed_secs());
                                         }
                                     } else {
                                         ui.add_enabled(false, egui::Button::new("Build Settlement (Need: Brick + Lumber + Wool + Grain)"));
@@ -590,7 +573,7 @@ pub fn setup_game(
                                     if has_city_resources {
                                         if ui.button("Upgrade to City (2 Grain + 3 Ore)").clicked() {
                                             *building_mode = BuildingMode::UpgradingCity;
-                                            //game_log.add_info(format!("City upgrade mode activated"), time.elapsed_secs());
+                                            game_log.add_info(format!("City upgrade mode activated"), time.elapsed_secs());
                                         }
                                     } else {
                                         ui.add_enabled(false, egui::Button::new("Upgrade to City (Need: 2 Grain + 3 Ore)"));
@@ -700,21 +683,22 @@ pub fn setup_game(
         if let Some((card_type, card_id)) = clicked_dev_card {
             dev_card_state.selected_card = Some((card_type, card_id));
             dev_card_state.awaiting_input = Some(card_type);
-            //game_log.add_info(format!("Selected {:?} card", card_type), time.elapsed_secs());
+            game_log.add_info(format!("Selected {:?} card", card_type), time.elapsed_secs());
         }
 
         if should_build_settlement {
             if let Some(vertex_id) = clicked_vertex.vertex_id {
-                request_build_settlement(
-                    &mode,
-                    &game,
-                    &mut client,
-                    current_player_id,
-                    vertex_id,
-                );
-
-                clicked_vertex.vertex_id = None;
-                *building_mode = BuildingMode::None;
+                let mut game = game.borrow_mut();
+                match game.build_settlement(current_player_id, vertex_id) {
+                    Ok(_) => {
+                        game_log.add_info(format!("Settlement built successfully!"), time.elapsed_secs());
+                        clicked_vertex.vertex_id = None;
+                        *building_mode = BuildingMode::None;
+                    }
+                    Err(e) => {
+                        game_log.add_warn(format!("Failed to build settlement: {}", e), time.elapsed_secs());
+                    }
+                }
             }
         }
 
@@ -724,61 +708,68 @@ pub fn setup_game(
                 let first = road_state.last_two_vertices[0];
                 let second = road_state.last_two_vertices[1];
 
-                request_build_road(
-                    &mode,
-                    &game,
-                    &mut client,
-                    current_player_id,
-                    first,
-                    second,
+                let mut game = game.borrow_mut();
 
-                );
-                
-                road_state.last_two_vertices.clear();
-                clicked_vertex.selected_vertex = None;
-                *building_mode = BuildingMode::None;
+                match game.build_road(current_player_id, first, second, RoadBuildingMode::Normal) {
+                    Ok(_) => {
+                        game_log.add_info(format!("Road built between {} and {}", first, second), time.elapsed_secs());
+                        road_state.last_two_vertices.clear();
+                        clicked_vertex.selected_vertex = None;
+                        *building_mode = BuildingMode::None;
+                    }
+                    Err(e) => {
+                        game_log.add_warn(format!("Failed to build road: {}", e), time.elapsed_secs());
+                        road_state.last_two_vertices.clear();
+                    }
+                }
             }
         }
 
         if should_build_city {
             if let Some(vertex_id) = clicked_vertex.vertex_id {
-                request_build_city(
-                    &mode,
-                    &game,
-                    &mut client,
-                    current_player_id,
-                    vertex_id,
-                );
-
-                clicked_vertex.vertex_id = None;
-                *building_mode = BuildingMode::None;
+                let mut game = game.borrow_mut();
+                match game.build_city(current_player_id, vertex_id) {
+                    Ok(_) => {
+                        game_log.add_info(format!("Settlement upgraded to city!"), time.elapsed_secs());
+                        clicked_vertex.vertex_id = None;
+                        *building_mode = BuildingMode::None;
+                    }
+                    Err(e) => {
+                        game_log.add_warn(format!("Failed to upgrade to city: {}", e), time.elapsed_secs());
+                    }
+                }
             }
         }
 
         if should_buy_devcard {
-            request_buy_devcard(
-                &mode,
-                &game,
-                &mut client,
-                current_player_id,
-            );
+            let mut game = game.borrow_mut();
+            match game.buy_dev_card(current_player_id) {
+                Ok(_) => {
+                    game_log.add_info(format!("Development card purchased!"), time.elapsed_secs());
+                }
+                Err(e) => {
+                    game_log.add_warn(format!("Failed to buy dev card: {}", e), time.elapsed_secs());
+                }
+            }
         }
 
         if should_play_devcard {
             //handle rolling 7 robber movement
             if robber_state.needs_movement {
                 if let Some(tile) = robber_state.selected_tile {
-                    request_move_robber(
-                        &mode, 
-                        &game, 
-                        &mut client, 
-                        tile, 
-                        robber_state.selected_victim,
-                    );
-
-                    robber_state.needs_movement = false;
-                    robber_state.selected_tile = None;
-                    robber_state.selected_victim = None;
+                    let mut game = game.borrow_mut();
+                    match game.move_robber(tile, robber_state.selected_victim) {
+                        Ok(_) => {
+                            game_log.add_info(format!("Robber moved!"), time.elapsed_secs());
+                            //reset robber state
+                            robber_state.needs_movement = false;
+                            robber_state.selected_tile = None;
+                            robber_state.selected_victim = None;
+                        }
+                        Err(e) => {
+                            game_log.add_warn(format!("Failed to move robber: {}", e), time.elapsed_secs());
+                        }
+                    }
                 }
             }
             // Handle dev card playing
@@ -826,97 +817,88 @@ pub fn setup_game(
                     }
                 };
 
-                request_play_devcard(
-                    &mode,
-                    &game,
-                    &mut client,
-                    current_player_id,
-                    card_id,
-                    input,
-                );
-
-                dev_card_state.selected_card = None;
-                dev_card_state.awaiting_input = None;
-                dev_card_state.selected_tile = None;
-                dev_card_state.selected_victim = None;
-                dev_card_state.selected_resource = None;
-                dev_card_state.road_building_roads.clear();
-                dev_card_state.year_resources.clear();
+                let mut game = game.borrow_mut();
+                match game.play_dev_card(current_player_id, card_id, input) {
+                    Ok(_) => {
+                        game_log.add_info(format!("{:?} card played successfully!", card_type), time.elapsed_secs());
+                        //reset dev card state
+                        dev_card_state.selected_card = None;
+                        dev_card_state.awaiting_input = None;
+                        dev_card_state.selected_tile = None;
+                        dev_card_state.selected_victim = None;
+                        dev_card_state.selected_resource = None;
+                        dev_card_state.road_building_roads.clear();
+                        dev_card_state.year_resources.clear();
+                    }
+                    Err(e) => {
+                        game_log.add_warn(format!("Failed to play dev card: {}", e), time.elapsed_secs());
+                    }
+                }
             }
         }
 
         if should_roll_dice && !dice_state.rolling {
-            if let Some((die1, die2, needs_robber)) =
-                request_roll_dice(&mode, &game, &mut client, current_player_id)
-            {
-                dice_state.start_roll((die1, die2));
-
-                if needs_robber {
-                    robber_state.needs_movement = true;
-                }
-            } else {
-                dice_state.start_roll((0, 0));
-            }
+            //generate dice roll values
+            use rand::Rng;
+            let mut rng = rand::rng();
+            let die1 = rng.random_range(1..=6);
+            let die2 = rng.random_range(1..=6);
+            dice_state.start_roll((die1, die2));
         }
 
+        //process the roll only when the animation finishes and hasnt been processed yet
         if !dice_state.rolling && dice_state.final_result.is_some() && !dice_state.processed {
             if let Some((d1, d2)) = dice_state.final_result {
                 let total = d1 + d2;
-
-                if matches!(*mode, GameMode::Local) {
-                    let mut game = game.borrow_mut();
-
-                    if total == 7 {
-                        game.robbery();
-                        robber_state.needs_movement = true;
-
-                    } else {
-                        let mut updates: Vec<(usize, GameResource, u8)> = Vec::new();
-
-                        for (tile_idx, tile) in game.tiles.iter().enumerate() {
-                            if tile.number_token == Some(total) && tile_idx != game.robber_tile {
-                                for &vertex_idx in &tile.vertices {
-                                    for (player_idx, player) in game.players.iter().enumerate() {
-                                        let mut amount = 0;
-                                        if player.settlements.contains(&vertex_idx) { amount += 1; }
-                                        if player.cities.contains(&vertex_idx) { amount += 2; }
-                                        if amount > 0 {
-                                            updates.push((player_idx, tile.resource, amount));
-                                        }
+                let mut game = game.borrow_mut();
+                
+                //distribute resources/handle robber based on the roll
+                if total == 7 {
+                    //trigger robber movement - call robbery first
+                    game.robbery();
+                    game_log.add_info(format!("Rolled 7 - Move the robber!"), time.elapsed_secs());
+                    
+                    //set flag to show robber UI
+                    robber_state.needs_movement = true;
+                } else {
+                    //collect resource updates first
+                    let mut updates: Vec<(usize, GameResource, u8)> = Vec::new();
+                    
+                    for (tile_idx, tile) in game.tiles.iter().enumerate() {
+                        if tile.number_token == Some(total) && tile_idx != game.robber_tile {
+                            for &vertex_idx in &tile.vertices {
+                                for (player_idx, player) in game.players.iter().enumerate() {
+                                    let mut amount = 0;
+                                    if player.settlements.contains(&vertex_idx) { amount += 1; }
+                                    if player.cities.contains(&vertex_idx) { amount += 2; }
+                                    if amount > 0 {
+                                        updates.push((player_idx, tile.resource, amount));
                                     }
                                 }
                             }
                         }
-
-                        for (player_idx, resource, amount) in updates {
-                            *game.players[player_idx].resources.entry(resource).or_insert(0) += amount;
-                        }
+                    }
+                    
+                    //apply updates
+                    for (player_idx, resource, amount) in updates {
+                        *game.players[player_idx].resources.entry(resource).or_insert(0) += amount;
                     }
                 }
-
-                //game_log.add_info(format!("Roll completed: {}", total), time.elapsed_secs());
-                dice_state.processed = true;
+                
+                game_log.add_info(format!("Roll completed: {}", total), time.elapsed_secs());
+                dice_state.processed = true; //mark as processed but keep dice visible
             }
         }
 
-
         if should_end_turn {
-            request_end_turn(
-                &mode,
-                &game,
-                &mut client,
-                current_player_id
-            );
-
+            let mut game = game.borrow_mut();
+            game.next_turn();
+            game_log.add_info(format!("Turn ended"), time.elapsed_secs());
             *building_mode = BuildingMode::None; //reset building mode on turn end
 
-            // reset dice for the next turn
+            //reset dice for next turn
             dice_state.final_result = None;
             dice_state.processed = false;
-
-            if matches!(*mode, GameMode::Local) {
-                //game_log.add_info(format!("Turn ended"), time.elapsed_secs());
-            }
         }
     }
 }

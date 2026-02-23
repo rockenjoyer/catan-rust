@@ -8,7 +8,7 @@ use crate::backend::networking::client::PendingJoin;
 #[derive(Event)]
 pub enum MultiplayerAction {
     Host,
-    Join { code: String },
+    Join { host_ip: String, code: String },
     Back,
     StartGame,
 }
@@ -33,8 +33,8 @@ pub fn handle_multiplayer_action(
             next_state.set(GameState::Hosting);
         }
         
-        MultiplayerAction::Join { code } => {
-            println!("Joining with code: {}", code);
+        MultiplayerAction::Join { host_ip, code } => {
+            println!("Joining {} with code: {}", host_ip, code);
             host_state.is_host = false;
 
             commands.insert_resource(PendingJoin {
