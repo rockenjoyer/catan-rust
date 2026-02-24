@@ -9,14 +9,15 @@ use bevy_quinnet::client::QuinnetClientPlugin;
 use bevy_quinnet::server::{QuinnetServerPlugin, QuinnetServer};
 use crate::frontend::bevy::config::LanOverride;
 
-use crate::backend::networking::config;
+use crate::backend::networking::config::{self};
 use crate::frontend::interface::{
     endscreen, game_panel, info_panel, log_panel, main_menu, settings_panel, multiplayer_menu, lobby_menu,
 };
-use crate::frontend::system::{audio, camera, transition::*, multiplayer::*};
+use crate::frontend::system::chat::render_chat_ui;
+use crate::frontend::system::{audio, camera, transition::*, multiplayer::*, chat::*};
 use crate::frontend::visual::{cards, city, dice, road, settlement, startscreen, tile};
 
-use crate::backend::networking::rendezvous::RendezvousServer;
+
 use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server, ServerAddr};
 use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState, start_terminal_listener, TerminalReceiver, initialize_game_state};
 
@@ -28,8 +29,15 @@ pub enum GameState {
     Lobby,
     Hosting,
     Joining,
-    InGame,
+    LocalInGame,
+    MultiplayerInGame,
     EndScreen,
+}
+
+#[derive(Resource, Clone, PartialEq)]
+pub enum GameMode {
+    Local,
+    Multiplayer,
 }
 
 pub struct FrontendPlugin;
@@ -63,7 +71,7 @@ impl Plugin for FrontendPlugin {
             .init_state::<GameState>()
 
             //event observers for multiplayer
-            .add_observer(handle_network_transition)
+            //.add_observer(handle_network_transition)
             .add_observer(handle_multiplayer_action)
 
             .add_audio_channel::<audio::MusicChannel>()
@@ -79,7 +87,6 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Update,
                 (
-                    start_terminal_listener,
                     audio::play_click_sound,
                     audio::play_sound_on_roll,
                     audio::play_sound_on_placement,
@@ -88,7 +95,7 @@ impl Plugin for FrontendPlugin {
             //check for endgame condition during the game
             .add_systems(
                 Update,
-                (endscreen::check_for_endgame).run_if(in_state(GameState::InGame)),
+                (endscreen::check_for_endgame).run_if(in_state(GameState::LocalInGame).or(in_state(GameState::MultiplayerInGame)))
             )
             //resources for game state
             .insert_resource(tile::ClickedVertex::default())
@@ -105,10 +112,13 @@ impl Plugin for FrontendPlugin {
             .insert_resource(config::GameMode::Local)
             .insert_resource(HostState::default())
             .insert_resource(ClientState::default())
+            .insert_resource(GameMode::Local)
             
             //resource for multiplayer
             .insert_resource(ServerPlayers::default())
+            .init_resource::<ChatState>()
             .init_resource::<LanOverride>()
+            .insert_resource(GameStartOrigin::default())
             
             .insert_resource(settings_panel::SettingsPanelState::default())
             .insert_resource(endscreen::EndscreenState::default())
@@ -144,12 +154,22 @@ impl Plugin for FrontendPlugin {
                     game_panel::setup_game,
                     settings_panel::setup_settings,
                     log_panel::setup_log_panel,
-                ).run_if(in_state(GameState::InGame)),
+                ).run_if(in_state(GameState::LocalInGame).or(in_state(GameState::MultiplayerInGame)))
             )
             .add_systems(
-                OnEnter(GameState::InGame),
-                initialize_game_state,
+                OnEnter(GameState::LocalInGame),
+                initialize_game_state.run_if(|mode: Res<GameMode>| *mode == GameMode::Local),
             )
+            .add_systems(
+                OnEnter(GameState::MultiplayerInGame),
+                initialize_game_state.run_if(|mode: Res<GameMode>| *mode == GameMode::Multiplayer),
+            )
+            /*
+            .add_systems(
+                OnEnter(GameState::MultiplayerInGame),
+                start_terminal_listener.run_if(not(resource_exists::<TerminalReceiver>))
+            )
+            */
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
                 lobby_menu::setup_lobby_menu
@@ -162,7 +182,8 @@ impl Plugin for FrontendPlugin {
                     host_connect_as_client
                         .after(start_server)
                         .run_if(|host_state: Res<HostState>| host_state.is_host)
-                        .run_if(resource_exists::<ServerAddr>),
+                        .run_if(resource_exists::<ServerAddr>)
+                        .run_if(resource_exists::<ClientState>),
                     ),
             )
             .add_systems(
@@ -186,19 +207,30 @@ impl Plugin for FrontendPlugin {
             )
             .add_systems(
                 Update,
-                (handle_client_events, handle_server_messages)
+                (
+                    handle_client_events, 
+                    handle_server_messages
+                )
                     .run_if(
                         in_state(GameState::Joining)
                         .or(in_state(GameState::Hosting))
-                        .or(in_state(GameState::Lobby)) 
+                        .or(in_state(GameState::Lobby))
+                        .or(in_state(GameState::MultiplayerInGame)) 
                     ),
             )
+            .add_systems(
+                bevy_egui::EguiPrimaryContextPass,
+                render_chat_ui
+                    .run_if(in_state(GameState::MultiplayerInGame))
+            )
+            /*
             .add_systems(
                 Update,
                 handle_terminal_messages
                     .run_if(resource_exists::<TerminalReceiver>)
-                    .run_if(in_state(GameState::InGame)),
+                    .run_if(in_state(GameState::MultiplayerInGame)),
             )
+            */
             //endscreen systems
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,

@@ -136,7 +136,7 @@ pub fn play_sound_on_placement(
     audio_state: Res<AudioState>,
     mut counts: Local<PlacementCounts>,
 ) {
-    if *state.get() != GameState::InGame {
+    if *state.get() != GameState::LocalInGame {
         counts.initialized = false;
         return;
     }

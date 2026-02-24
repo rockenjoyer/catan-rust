@@ -10,12 +10,18 @@ pub enum MultiplayerAction {
     Host,
     Join { host_ip: String, code: String },
     Back,
+    EnterLobby,
     StartGame,
 }
 
 #[derive(Resource, Default, PartialEq)]
 pub struct HostState {
     pub is_host: bool,
+}
+
+#[derive(Resource, Default)]
+pub struct GameStartOrigin {
+    pub started_from_lobby: bool,
 }
 
 pub fn handle_multiplayer_action(
@@ -35,7 +41,6 @@ pub fn handle_multiplayer_action(
         
         MultiplayerAction::Join { host_ip, code } => {
             println!("Joining {} with code: {}", host_ip, code);
-            host_state.is_host = false;
 
             commands.insert_resource(PendingJoin {
                 join_code: code.clone(),
@@ -48,6 +53,10 @@ pub fn handle_multiplayer_action(
             next_state.set(GameState::MainMenu);
         }
 
+        MultiplayerAction::EnterLobby => {
+            next_state.set(GameState::Lobby);
+        }
+
         MultiplayerAction::StartGame => {
             if host_state.is_host {
                 println!("Host attempting to start game");
@@ -58,6 +67,7 @@ pub fn handle_multiplayer_action(
                     let _ = connection.try_send_payload(payload);
                 }
             }
+            next_state.set(GameState::MultiplayerInGame);
         }
     }
 }

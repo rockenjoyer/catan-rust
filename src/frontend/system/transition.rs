@@ -16,7 +16,7 @@ pub fn handle_network_transition(
             next_state.set(GameState::Lobby);
         }
         NetworkTransition::EnterGame => {
-            next_state.set(GameState::InGame);
+            next_state.set(GameState::MultiplayerInGame);
         }
     }
 }

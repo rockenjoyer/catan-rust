@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
+use bevy_quinnet::client::QuinnetClient;
 
 use crate::frontend::interface::main_menu;
 use crate::frontend::interface::style::{apply_style, text_with_background};
 use crate::backend::networking::client::ClientState;
 use crate::backend::networking::config::ConnectionMode;
 use crate::frontend::bevy::GameState;
+use crate::frontend::system::chat::{ChatState, render_chat_ui};
 use crate::frontend::system::multiplayer::{MultiplayerAction, HostState};
 use crate::frontend::visual::startscreen::{StartscreenTexture, draw_background, LogoTexture};
 use crate::backend::networking::server::ServerPlayers;
@@ -17,6 +19,8 @@ pub fn setup_lobby_menu(
     mut commands: Commands,
     background: Option<Res<StartscreenTexture>>,
     logo_image: Option<Res<LogoTexture>>,
+    mut chat_state: ResMut<ChatState>,
+    mut client: ResMut<QuinnetClient>,
 ) {
     let Some(background) = background else {
         return;
@@ -92,4 +96,6 @@ pub fn setup_lobby_menu(
             }
         });
     });
+    render_chat_ui(contexts, chat_state, client);
 }
+
