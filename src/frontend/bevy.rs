@@ -119,6 +119,7 @@ impl Plugin for FrontendPlugin {
             .insert_resource(ServerPlayers::default())
             .init_resource::<ChatState>()
             .init_resource::<LanOverride>()
+            .insert_resource(GameStartOrigin::default())
             
             .insert_resource(settings_panel::SettingsPanelState::default())
             .insert_resource(endscreen::EndscreenState::default())
@@ -212,14 +213,12 @@ impl Plugin for FrontendPlugin {
                         .or(in_state(GameState::MultiplayerInGame)) 
                     ),
             )
-            /*
             .add_systems(
-                Update,
+                bevy_egui::EguiPrimaryContextPass,
                 render_chat_ui
-                    .run_if(in_state(GameState::Lobby)
-                        .or(in_state(GameState::MultiplayerInGame)))
+                    .run_if(should_render_chat)
+                    .run_if(in_state(GameState::MultiplayerInGame))
             )
-            */
             .add_systems(
                 Update,
                 handle_terminal_messages

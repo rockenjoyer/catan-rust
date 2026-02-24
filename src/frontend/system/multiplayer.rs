@@ -18,12 +18,18 @@ pub struct HostState {
     pub is_host: bool,
 }
 
+#[derive(Resource, Default)]
+pub struct GameStartOrigin {
+    pub started_from_lobby: bool,
+}
+
 pub fn handle_multiplayer_action(
     action: On<MultiplayerAction>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<GameState>>,
     mut host_state: ResMut<HostState>,
     mut client: ResMut<QuinnetClient>,
+    mut game_start_origin: ResMut<GameStartOrigin>,
 ) {
     match &*action {
         MultiplayerAction::Host => {
@@ -46,6 +52,7 @@ pub fn handle_multiplayer_action(
 
         MultiplayerAction::Back => {
             next_state.set(GameState::MainMenu);
+            game_start_origin.started_from_lobby = false;
         }
 
         MultiplayerAction::StartGame => {
@@ -58,6 +65,11 @@ pub fn handle_multiplayer_action(
                     let _ = connection.try_send_payload(payload);
                 }
             }
+            game_start_origin.started_from_lobby = true;
         }
     }
+}
+
+pub fn should_render_chat(game_start_origin: Res<GameStartOrigin>) -> bool {
+    game_start_origin.started_from_lobby
 }
