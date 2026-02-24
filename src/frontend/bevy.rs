@@ -71,7 +71,7 @@ impl Plugin for FrontendPlugin {
             .init_state::<GameState>()
 
             //event observers for multiplayer
-            .add_observer(handle_network_transition)
+            //.add_observer(handle_network_transition)
             .add_observer(handle_multiplayer_action)
 
             .add_audio_channel::<audio::MusicChannel>()
@@ -87,7 +87,6 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 Update,
                 (
-                    start_terminal_listener,
                     audio::play_click_sound,
                     audio::play_sound_on_roll,
                     audio::play_sound_on_placement,
@@ -165,6 +164,12 @@ impl Plugin for FrontendPlugin {
                 OnEnter(GameState::MultiplayerInGame),
                 initialize_game_state.run_if(|mode: Res<GameMode>| *mode == GameMode::Multiplayer),
             )
+            /*
+            .add_systems(
+                OnEnter(GameState::MultiplayerInGame),
+                start_terminal_listener.run_if(not(resource_exists::<TerminalReceiver>))
+            )
+            */
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
                 lobby_menu::setup_lobby_menu
@@ -216,15 +221,16 @@ impl Plugin for FrontendPlugin {
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,
                 render_chat_ui
-                    .run_if(should_render_chat)
                     .run_if(in_state(GameState::MultiplayerInGame))
             )
+            /*
             .add_systems(
                 Update,
                 handle_terminal_messages
                     .run_if(resource_exists::<TerminalReceiver>)
                     .run_if(in_state(GameState::MultiplayerInGame)),
             )
+            */
             //endscreen systems
             .add_systems(
                 bevy_egui::EguiPrimaryContextPass,

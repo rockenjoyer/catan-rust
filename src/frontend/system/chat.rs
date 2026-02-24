@@ -18,7 +18,7 @@ pub fn render_chat_ui(
     let ctx = contexts.ctx_mut();
 
     egui::Window::new("Chat")
-        .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
+        .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(60.0, -10.0))
         .resizable(false)
         .collapsible(false)
         .title_bar(false)

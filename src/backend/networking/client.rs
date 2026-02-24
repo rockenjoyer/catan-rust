@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Mul;
 use std::time::Duration;
 use std::thread::{self, sleep};
 use std::net::IpAddr;
@@ -34,6 +35,7 @@ use crate::backend::{
     }
 };
 
+use crate::frontend::system::multiplayer::MultiplayerAction;
 use crate::frontend::system::{
     chat::ChatState,
     transition::NetworkTransition,
@@ -96,7 +98,7 @@ pub fn handle_server_messages(
                 ServerMessage::Confirmation { player } => {
                     if state.assigned_player.is_none() {
                         state.assigned_player = Some(player);
-                        commands.trigger(NetworkTransition::EnterLobby);
+                        commands.trigger(MultiplayerAction::EnterLobby);
                     }
 
                     state.users.insert(player, format!("Player {}", player));
@@ -104,8 +106,8 @@ pub fn handle_server_messages(
                 }
                 ServerMessage::GameStart => {
                     println!("Game started");
-
-                    commands.trigger(NetworkTransition::EnterGame);
+                    
+                    commands.trigger(MultiplayerAction::StartGame);
                 }
                 ServerMessage::Turn { player } => {
                     if Some(player) == state.assigned_player {
@@ -184,6 +186,7 @@ pub fn handle_terminal_messages(
 
 pub fn start_terminal_listener(mut commands: Commands) {
     let (tx, rx) = mpsc::channel::<String>(100);
+    commands.insert_resource(TerminalReceiver(rx));
 
     thread::spawn(move || loop {
         let mut buffer = String::new();
@@ -194,8 +197,6 @@ pub fn start_terminal_listener(mut commands: Commands) {
             }
         }
     });
-
-    commands.insert_resource(TerminalReceiver(rx));
 }
 
 pub fn handle_client_events(
@@ -271,6 +272,6 @@ pub fn start_connection(
 
     println!("Client attempting to connect to server at {}", server_addr);
 
-    commands.trigger(NetworkTransition::EnterLobby);
+    commands.trigger(MultiplayerAction::EnterLobby);
 }
 

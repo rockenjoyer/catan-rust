@@ -25,6 +25,7 @@ use crate::backend::networking::protocol::*;
 use crate::backend::networking::bootstrap;
 use crate::backend::networking::config::ConnectionMode;
 
+use crate::frontend::system::multiplayer::MultiplayerAction;
 use crate::frontend::system::transition::NetworkTransition;
 
 #[derive(Resource, PartialEq)]
@@ -325,7 +326,7 @@ pub fn handle_client_messages(
 
                 ClientMessage::ChatMessage { message } => {
                     if let Some(&player_id) = players.players.get(&client_id) {
-                        let formatted_message = format!("Player {}: {}", player_id, message);
+                        let formatted_message = format!("Player {}: {}", player_id+1, message);
 
                         let msg = ServerMessage::ChatMessage { message: formatted_message };
                         let payload = bincode::serialize(&msg).unwrap();
@@ -484,5 +485,5 @@ pub fn host_connect_as_client(
     });
 
     println!("Host connected to server at {}", server_addr);
-    commands.trigger(NetworkTransition::EnterLobby);
+    commands.trigger(MultiplayerAction::EnterLobby);
 }

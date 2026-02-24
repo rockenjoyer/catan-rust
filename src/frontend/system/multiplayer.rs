@@ -10,6 +10,7 @@ pub enum MultiplayerAction {
     Host,
     Join { host_ip: String, code: String },
     Back,
+    EnterLobby,
     StartGame,
 }
 
@@ -29,7 +30,6 @@ pub fn handle_multiplayer_action(
     mut next_state: ResMut<NextState<GameState>>,
     mut host_state: ResMut<HostState>,
     mut client: ResMut<QuinnetClient>,
-    mut game_start_origin: ResMut<GameStartOrigin>,
 ) {
     match &*action {
         MultiplayerAction::Host => {
@@ -41,7 +41,6 @@ pub fn handle_multiplayer_action(
         
         MultiplayerAction::Join { host_ip, code } => {
             println!("Joining {} with code: {}", host_ip, code);
-            host_state.is_host = false;
 
             commands.insert_resource(PendingJoin {
                 join_code: code.clone(),
@@ -52,7 +51,10 @@ pub fn handle_multiplayer_action(
 
         MultiplayerAction::Back => {
             next_state.set(GameState::MainMenu);
-            game_start_origin.started_from_lobby = false;
+        }
+
+        MultiplayerAction::EnterLobby => {
+            next_state.set(GameState::Lobby);
         }
 
         MultiplayerAction::StartGame => {
@@ -65,11 +67,7 @@ pub fn handle_multiplayer_action(
                     let _ = connection.try_send_payload(payload);
                 }
             }
-            game_start_origin.started_from_lobby = true;
+            next_state.set(GameState::MultiplayerInGame);
         }
     }
-}
-
-pub fn should_render_chat(game_start_origin: Res<GameStartOrigin>) -> bool {
-    game_start_origin.started_from_lobby
 }
