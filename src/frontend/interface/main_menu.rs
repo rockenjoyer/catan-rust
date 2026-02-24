@@ -46,7 +46,7 @@ pub fn setup_main_menu(
                     )
                     .clicked()
                 {
-                    next_state.set(GameState::InGame);
+                    next_state.set(GameState::LocalInGame);
                 }
 
                 ui.add_space(15.0);

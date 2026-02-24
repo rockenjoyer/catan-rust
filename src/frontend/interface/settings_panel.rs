@@ -184,7 +184,7 @@ pub fn setup_settings(
 
                             ui.add_space(15.0);
 
-                            if current_state.get() == &GameState::InGame {
+                            if current_state.get() == &GameState::LocalInGame {
                                 ui.add_space(15.0);
                                 if ui.button("🏠 Return to Main Menu").clicked() {
                                     next_state.set(GameState::MainMenu);

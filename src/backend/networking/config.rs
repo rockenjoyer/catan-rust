@@ -1,12 +1,23 @@
 use bevy::prelude::*;
+use std::cell::RefCell;
 use std::net::{SocketAddr, UdpSocket};
 use std::io;
 use std::fmt;
+use std::rc::Rc;
+
+use crate::backend::game::Game;
+use crate::backend::networking::client::ClientState;
 
 pub enum ConnectionMode {
     LOCAL,
     LAN,
     REMOTE,
+}
+
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GameMode {
+    Local,
+    Multiplayer,
 }
 
 #[derive(Resource, Default)]
@@ -40,24 +51,6 @@ impl fmt::Display for ConnectionMode {
             _ => write!(f, ""),
         }
     }
-}
-
-#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GameMode {
-    Local,
-    Multiplayer,
-}
-
-#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
-pub enum AppState {
-    #[default]
-    MainMenu,
-    Singleplayer,
-    MultiplayerMenu,
-    Hosting,
-    Lobby,
-    Joining,
-    InGame,
 }
 
 fn get_local_ip() -> io::Result<String> {

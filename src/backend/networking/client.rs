@@ -22,13 +22,22 @@ use bevy_quinnet::{
     shared::ClientId,
 };
 
-use crate::backend::networking::{
-    protocol::*,
-    bootstrap,
-    config::{ConnectionMode, LanOverride},
+use crate::backend::{
+    networking::{
+        protocol::*,
+        bootstrap,
+        config::{ConnectionMode, LanOverride},
+    },
+    game::{
+        Game,
+        RoadBuildingMode,
+    }
 };
-use crate::backend::game::{ Game, RoadBuildingMode };
-use crate::frontend::system::transition::NetworkTransition;
+
+use crate::frontend::system::{
+    chat::ChatState,
+    transition::NetworkTransition,
+};
 
 #[derive(Resource, Clone)]
 pub struct PendingJoin {
@@ -46,6 +55,7 @@ pub struct ClientState {
     pub assigned_player: Option<u8>,
     pub users: HashMap<u8, String>,
     pub game: Option<Game>,
+    pub messages: Vec<String>,
 }
 
 #[derive(Resource, Deref, DerefMut)]
@@ -72,7 +82,12 @@ pub fn handle_server_messages(
     mut state: ResMut<ClientState>,
     mut client: ResMut<QuinnetClient>,
     mut commands: Commands,
+    mut chat_state: ResMut<ChatState>,
 ) {
+    if !client.is_connected() {
+        return;
+    }
+
     let mut client_connection = client.connection_mut();
 
     while let Some(payload_bytes) = client_connection.try_receive_payload(0) {
@@ -103,7 +118,9 @@ pub fn handle_server_messages(
                     eprintln!("Server crashed");
                 }
                 ServerMessage::ChatMessage { message } => {
-                    println!("> {}", message);
+                        println!("[Chat]: {}", message);
+                        state.messages.push(message.clone());
+                        chat_state.messages.push(message);
                 }
                 ServerMessage::ClientConnected { player } => {
                     state.users.insert(player, format!("Player {}", player));

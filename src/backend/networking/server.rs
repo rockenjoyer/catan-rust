@@ -324,10 +324,22 @@ pub fn handle_client_messages(
                 }
 
                 ClientMessage::ChatMessage { message } => {
-                    let msg = ServerMessage::ChatMessage { message };
-                    let payload = bincode::serialize(&msg).unwrap();
-                    for c in server.endpoint_mut().clients() {
-                        let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+                    if let Some(&player_id) = players.players.get(&client_id) {
+                        let formatted_message = format!("Player {}: {}", player_id, message);
+
+                        let msg = ServerMessage::ChatMessage { message: formatted_message };
+                        let payload = bincode::serialize(&msg).unwrap();
+
+                        for c in server.endpoint_mut().clients() {
+                            let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+                        }
+                    } else {
+                        let err = ServerMessage::ActionResult {
+                            success: false,
+                            message: "Error sending chat message".into(),
+                        };
+                        let payload = bincode::serialize(&err).unwrap();
+                        let _ = server.endpoint_mut().try_send_payload(client_id, payload);
                     }
                 }
 
@@ -339,7 +351,9 @@ pub fn handle_client_messages(
                             let payload = bincode::serialize(&start_msg).unwrap();
 
                             for c in server.endpoint_mut().clients() {
-                                let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+                                if c != client_id {
+                                    let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
+                                }
                             }
 
                             println!("Game started by host!");
@@ -347,11 +361,11 @@ pub fn handle_client_messages(
                             let mut phase = server_phase.as_mut();
                             *phase = ServerPhase::InGame;
                         } else {
-                            let err_msg = ServerMessage::ActionResult {
+                            let err= ServerMessage::ActionResult {
                                 success: false,
                                 message: "Need at least one other player to start".into(),
                             };
-                            let payload = bincode::serialize(&err_msg).unwrap();
+                            let payload = bincode::serialize(&err).unwrap();
                             let _ = server.endpoint_mut().try_send_payload(client_id, payload);
                         }
                     }
