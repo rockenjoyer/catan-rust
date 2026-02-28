@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts};
 use std::net::SocketAddr;
 
-use crate::backend::networking::config::{ConnectionMode, LanOverride};
+use crate::backend::networking::config::LanOverride;
 use crate::frontend::interface::main_menu;
 use crate::frontend::interface::style::{apply_style, text_with_background};
 use crate::frontend::system::multiplayer::MultiplayerAction;
@@ -14,6 +14,7 @@ pub struct MultiplayerMenuState {
     pub join_code: String,
 }
 
+/// Generates the multiplayer menu
 pub fn setup_multiplayer_menu(
     mut contexts: EguiContexts,
     mut commands: Commands,
@@ -63,7 +64,7 @@ pub fn setup_multiplayer_menu(
 
             ui.add_space(10.0);
 
-            // The actual join code is set to an empty string
+            // The actual join code is statically set to "ABC123"
             // This field is used to input the local IP of the host
             // Instead of the rng join code, the client only needs to input the host local ip in order to join the lobby
             ui.add_sized(

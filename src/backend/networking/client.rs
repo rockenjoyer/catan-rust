@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Mul;
 use std::time::Duration;
 use std::thread::{self, sleep};
 use std::net::IpAddr;
@@ -20,7 +19,7 @@ use bevy_quinnet::{
         connection::{ClientAddrConfiguration, ConnectionEvent, ConnectionFailedEvent},
         ClientConnectionConfiguration, QuinnetClient
     },
-    shared::ClientId,
+    //shared::ClientId,
 };
 
 use crate::backend::{
@@ -36,22 +35,21 @@ use crate::backend::{
 };
 
 use crate::frontend::system::multiplayer::MultiplayerAction;
-use crate::frontend::system::{
-    chat::ChatState,
-    transition::NetworkTransition,
-};
+use crate::frontend::system::chat::ChatState;
 
 #[derive(Resource, Clone)]
 pub struct PendingJoin {
     pub join_code: String,
 }
 
+/// Unused currently, due to architectural conflicts
+/*
 #[derive(Resource, Debug, Clone, Default)]
 pub struct Users {
     self_id: ClientId,
     names: HashMap<ClientId, String>,
 }
-
+*/
 #[derive(Resource, Debug, Default)]
 pub struct ClientState {
     pub assigned_player: Option<u8>,
@@ -63,6 +61,9 @@ pub struct ClientState {
 #[derive(Resource, Deref, DerefMut)]
 pub struct TerminalReceiver(mpsc::Receiver<String>);
 
+/// Listens for app exit events. 
+/// If detected, sends a disconnect message to the server and briefly 
+/// sleeps to ensure the message is sent before the app closes.
 pub fn on_app_exit(
     app_exit_events: MessageReader<AppExit>,
     mut client: ResMut<QuinnetClient>,
@@ -80,6 +81,8 @@ pub fn on_app_exit(
     }
 }
 
+/// Processes incoming server messages.
+/// Updates the client state, triggers UI actions, and logs messages accordingly.
 pub fn handle_server_messages(
     mut state: ResMut<ClientState>,
     mut client: ResMut<QuinnetClient>,
@@ -90,7 +93,7 @@ pub fn handle_server_messages(
         return;
     }
 
-    let mut client_connection = client.connection_mut();
+    let client_connection = client.connection_mut();
 
     while let Some(payload_bytes) = client_connection.try_receive_payload(0) {
         match bincode::deserialize::<ServerMessage>(&payload_bytes) {
@@ -159,6 +162,9 @@ pub fn handle_server_messages(
     }
 }
 
+/// Originally from bevy_quinnet.
+/// Listens for terminal input. Sends "quit" as a disconnect message or forwards other input as chat messages to the server.
+/// Used primarily for testing.
 pub fn handle_terminal_messages(
     mut terminal_messages: ResMut<TerminalReceiver>,
     mut app_exit_events: MessageWriter<AppExit>,
@@ -184,6 +190,9 @@ pub fn handle_terminal_messages(
     }
 }
 
+/// Originally from bevy_quinnet.
+/// Spawns a thread to read terminal input and sends it to the TerminalReceiver channel for processing by handle_terminal_messages.
+/// Primarily used for testing.
 pub fn start_terminal_listener(mut commands: Commands) {
     let (tx, rx) = mpsc::channel::<String>(100);
     commands.insert_resource(TerminalReceiver(rx));
@@ -199,6 +208,8 @@ pub fn start_terminal_listener(mut commands: Commands) {
     });
 }
 
+/// Handles connection events: generates a random username on successful connection and sends a join message. 
+/// Logs connection failures.
 pub fn handle_client_events(
     mut connection_events: MessageReader<ConnectionEvent>,
     mut connection_failed_events: MessageReader<ConnectionFailedEvent>,
@@ -226,6 +237,7 @@ pub fn handle_client_events(
     }
 }
 
+/// Initializes the game state with a new Game instance if it doesn’t already exist.
 pub fn initialize_game_state(
     mut state: ResMut<ClientState>,
 ) {
@@ -239,13 +251,19 @@ pub fn initialize_game_state(
     }
 }
 
+/// Attempts to connect to the game server using the join code and optional address override.
+/// Configures the client connection and triggers the lobby UI.
+/// 
+/// Currently join_code is always: ABC123
+/// The functionality of the PendingJoin is not supported.
+/// LanOverride allows manually specifying the host machine's address to connect to.
 pub fn start_connection(
     mut client: ResMut<QuinnetClient>,
     pending: Option<Res<PendingJoin>>,
     override_addr: Option<Res<LanOverride>>,
     mut commands: Commands,
 ) {
-    let Some(pending) = pending else {
+    let Some(_pending) = pending else {
         println!("No PendingJoin found. Skipping connection.");
         return;
     };

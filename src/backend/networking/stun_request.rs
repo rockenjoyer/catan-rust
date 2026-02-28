@@ -1,16 +1,26 @@
+/// WARNING:
+/// The code in this file is not actively used. It is implemented in bootstrap.rs to find the public IP of the host machine
+/// if ConnectionMode::REMOTE, but this is currently not operational.
+/// Since only LAN multiplayer is functional, this file is never called and might not work correctly
+/// in the current networking state.
+
 use std::net::{UdpSocket, SocketAddr, ToSocketAddrs};
 use std::time::{Duration, Instant};
 
 use stun::message::{Message, BINDING_REQUEST, Getter};
 use stun::xoraddr::XorMappedAddress;
 
+/// Sends a STUN binding request to the specified STUN server to discover the public IP and port
+/// of the host. Waits for response, decodes it, and extracts the public address using XorMappedAddress
+/// 
+/// Returns the public address or an error if the request times out or fails
 pub fn get_public_addr(socket: &UdpSocket, stun_host: &str, stun_port: u16) -> std::io::Result<SocketAddr> {
     let stun_server = resolve_ipv4(stun_host, stun_port)?;
     println!("STUN server address: {}", stun_server);
 
     let mut request = Message::new();
     request.set_type(BINDING_REQUEST);
-    request.new_transaction_id();
+    let _ = request.new_transaction_id().is_ok();
     request.encode();
     println!("Sending STUN request to {}", stun_server);
 
@@ -58,6 +68,9 @@ pub fn get_public_addr(socket: &UdpSocket, stun_host: &str, stun_port: u16) -> s
     }
 }
 
+/// Resolves the given hostname and port to an IPv4 socket address.
+/// 
+/// Returns the first IPv4 address found or an error if no IPv4 address is available.
 fn resolve_ipv4(host: &str, port: u16) -> std::io::Result<SocketAddr> {
     (host, port)
         .to_socket_addrs()?

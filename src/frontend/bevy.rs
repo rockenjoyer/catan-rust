@@ -14,12 +14,12 @@ use crate::frontend::interface::{
     endscreen, game_panel, info_panel, log_panel, main_menu, settings_panel, multiplayer_menu, lobby_menu,
 };
 use crate::frontend::system::chat::render_chat_ui;
-use crate::frontend::system::{audio, camera, transition::*, multiplayer::*, chat::*};
+use crate::frontend::system::{audio, camera, multiplayer::*, chat::*};
 use crate::frontend::visual::{cards, city, dice, road, settlement, startscreen, tile};
 
 
 use crate::backend::networking::server::{ServerGame, ServerPhase, ServerPlayers, handle_client_messages, handle_server_events, host_connect_as_client, start_server, ServerAddr};
-use crate::backend::networking::client::{handle_client_events, handle_server_messages, handle_terminal_messages, start_connection, ClientState, start_terminal_listener, TerminalReceiver, initialize_game_state};
+use crate::backend::networking::client::{handle_client_events, handle_server_messages, start_connection, ClientState, initialize_game_state};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
@@ -71,7 +71,6 @@ impl Plugin for FrontendPlugin {
             .init_state::<GameState>()
 
             //event observers for multiplayer
-            //.add_observer(handle_network_transition)
             .add_observer(handle_multiplayer_action)
 
             .add_audio_channel::<audio::MusicChannel>()

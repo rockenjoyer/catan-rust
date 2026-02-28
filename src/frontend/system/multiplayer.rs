@@ -24,6 +24,7 @@ pub struct GameStartOrigin {
     pub started_from_lobby: bool,
 }
 
+/// Handles all actions that can be executed in the multiplayer menu
 pub fn handle_multiplayer_action(
     action: On<MultiplayerAction>,
     mut commands: Commands,

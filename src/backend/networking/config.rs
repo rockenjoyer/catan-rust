@@ -1,12 +1,7 @@
 use bevy::prelude::*;
-use std::cell::RefCell;
 use std::net::{SocketAddr, UdpSocket};
 use std::io;
 use std::fmt;
-use std::rc::Rc;
-
-use crate::backend::game::Game;
-use crate::backend::networking::client::ClientState;
 
 pub enum ConnectionMode {
     LOCAL,
@@ -25,6 +20,8 @@ pub struct LanOverride {
     pub addr: Option<SocketAddr>,
 }
 
+/// WARNING: REMOTE connection functionality is currently deprecated
+/// remote connections are not correctly implemented, use at your own risk
 impl ConnectionMode {
     pub fn rendezvous_addr(&self, override_addr: Option<SocketAddr>) -> SocketAddr {
         match self {
@@ -38,6 +35,8 @@ impl ConnectionMode {
         }
     }
 
+    /// Checks whether STUN should be used for the given connection mode.
+    /// STUN is only used for REMOTE.
     pub fn use_stun(&self) -> bool {
         matches!(self, ConnectionMode::REMOTE)
     }
@@ -53,6 +52,7 @@ impl fmt::Display for ConnectionMode {
     }
 }
 
+/// Attempts to determine the local IP address of the machine
 fn get_local_ip() -> io::Result<String> {
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     socket.connect("8.8.8.8:80")?;

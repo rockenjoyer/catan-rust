@@ -1,3 +1,14 @@
+/// WARNING: THIS FILE IS DEPRECATED AND NON-FUNCTIONAL.
+/// It is kept for historical/reference purposes only.
+/// DO NOT USE THIS CODE IN PRODUCTION.
+/// 
+/// For reference:
+/// This code was used to attempt to modify game_panel.rs in order to 
+/// implement a functioning I/O-handling for the multiplayer.
+/// 
+/// The idea was to use "requests" to distinguish between a local- and multiplayer-
+/// game-instance and run the proper commands.
+
 use bevy::prelude::*;
 use bevy_quinnet::client::QuinnetClient;
 
@@ -5,10 +16,8 @@ use crate::backend::networking::{protocol::ClientMessage, config::GameMode};
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use bevy_egui::{EguiContexts, egui};
-use std::collections::HashMap;
 
-use crate::backend::game::{Game, GamePhase, RoadBuildingMode, Resource as GameResource, DevCard, DevCardInput};
+use crate::backend::game::{Game, RoadBuildingMode, Resource as GameResource, DevCard, DevCardInput};
 
 //resource to track road building state
 #[derive(Resource, Default)]

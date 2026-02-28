@@ -10,6 +10,8 @@ pub struct ChatState {
     pub input: String,
 }
 
+/// Generates the chat box.
+/// Currently only used in the lobby and game instance started from the lobby.
 pub fn render_chat_ui(
     mut contexts: EguiContexts,
     mut chat_state: ResMut<ChatState>,
@@ -57,7 +59,7 @@ pub fn render_chat_ui(
         });
 }
 
-
+/// Handles chat inputs and looks out for specific commands
 pub fn handle_chat_input(
     input: String,
     client: &mut ResMut<QuinnetClient>,
@@ -70,9 +72,9 @@ pub fn handle_chat_input(
                 let _ = client.connection_mut().try_send_payload(payload);
             }
             "/help" => {
-                println!("No help");
+                println!("No help >:( ... Just kidding, try /quit");
             }
-            _ => { println!("ERROR: Not a valid command silly!") }
+            _ => { println!("ERROR: Not a valid command") }
         }
     } else {
         let msg = ClientMessage::ChatMessage { message: input.clone() };

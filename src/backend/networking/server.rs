@@ -26,7 +26,6 @@ use crate::backend::networking::bootstrap;
 use crate::backend::networking::config::ConnectionMode;
 
 use crate::frontend::system::multiplayer::MultiplayerAction;
-use crate::frontend::system::transition::NetworkTransition;
 
 #[derive(Resource, PartialEq)]
 pub enum ServerPhase {
@@ -52,8 +51,7 @@ pub struct JoinCode(pub String);
 #[derive(Resource)]
 pub struct ServerAddr(pub SocketAddr);
 
-
-
+/// Processes incoming client messages
 pub fn handle_client_messages(
     mut server: ResMut<QuinnetServer>,
     mut server_game: ResMut<ServerGame>,
@@ -359,7 +357,7 @@ pub fn handle_client_messages(
 
                             println!("Game started by host!");
                             
-                            let mut phase = server_phase.as_mut();
+                            let phase = server_phase.as_mut();
                             *phase = ServerPhase::InGame;
                         } else {
                             let err= ServerMessage::ActionResult {
@@ -397,6 +395,7 @@ pub fn handle_client_messages(
     }
 }
 
+/// Sends an action result (success/failure) message to all connected clients
 fn broadcast_action_result(server: &mut QuinnetServer, success: bool, message: String) {
     let msg = ServerMessage::ActionResult { success, message };
     let payload = bincode::serialize(&msg).unwrap();
@@ -405,6 +404,10 @@ fn broadcast_action_result(server: &mut QuinnetServer, success: bool, message: S
     }
 }
 
+/// DROPPED SUPPORT: This function is currently unused.
+/// Attempts to broadcast a message to all connected clients.
+/// This function is retained for reference but is not actively used in the codebase.
+/*
 fn broadcast_chat(server: &mut QuinnetServer, message: &str) {
     let msg = ServerMessage::ChatMessage { message: message.to_string() };
     let payload = bincode::serialize(&msg).unwrap();
@@ -412,7 +415,9 @@ fn broadcast_chat(server: &mut QuinnetServer, message: &str) {
         let _ = server.endpoint_mut().try_send_payload(c, payload.clone());
     }
 }
+*/
 
+/// Handles client disconnections by removing the player from the server’s player list and disconnecting the clients
 pub fn handle_server_events(
     mut events: MessageReader<ConnectionLostEvent>,
     mut server: ResMut<QuinnetServer>,
@@ -424,6 +429,10 @@ pub fn handle_server_events(
     }
 }
 
+/// Initializes the game server, sets up a rendezvous server, generates a join code, and starts the network endpoint. 
+/// Inserts bevy_ecs resources for game state, players, and server phase.
+/// 
+/// Currently join_code is always: ABC123
 pub fn start_server(mut commands: Commands, mut server: ResMut<QuinnetServer>) {
     let join_code = "ABC123".to_string();
 /*

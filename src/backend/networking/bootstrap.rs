@@ -1,10 +1,17 @@
-use std::net::{UdpSocket, SocketAddr, IpAddr};
+use std::net::{UdpSocket, SocketAddr};
 use std::time::{Duration, Instant};
 use std::thread::sleep;
 
 use crate::backend::networking::config::ConnectionMode;
 use crate::backend::networking::stun_request;
 
+/// Binds a UDP socket and registers the host with a rendezvous server using the provided join_code
+/// Waits for a "READY" confirmation before returning the server address for NAT punch-through
+///
+/// If ConnectionMode::REMOTE, it retrieves the public address from the open google STUN server and 
+/// sends it to the rendezvous server; however currently Public hosting is not supported
+/// 
+/// Currently join_code is always: ABC123
 pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
     let rendezvous_addr: SocketAddr = mode.rendezvous_addr(None);
     let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind host socket");
@@ -60,6 +67,13 @@ pub fn host(mode: ConnectionMode, join_code: &str) -> SocketAddr {
     }
 }
 
+/// Binds a UDP socket and sends a join request to the rendezvous server using the join_code
+/// Listens for the server address from the rendezvous server and returns it for connection
+/// 
+/// ConnectionMode::REMOTE is not correctly implemented; the choice was given up midway through development
+/// but this code snippet was never removed
+/// 
+/// Currently join_code is always: ABC123
 pub fn join(mode: ConnectionMode, join_code: &str, override_addr: Option<SocketAddr>) -> SocketAddr {
     let rendezvous_addr: SocketAddr = mode.rendezvous_addr(override_addr);
 
@@ -67,7 +81,7 @@ pub fn join(mode: ConnectionMode, join_code: &str, override_addr: Option<SocketA
         .expect("Failed to bind client socket");
     socket.set_nonblocking(true).unwrap();
 
-    let addr = if mode.use_stun() {
+    let _addr = if mode.use_stun() {
         let public_addr = stun_request::get_public_addr(&socket, "stun.l.google.com", 19302)
             .expect("Failed to get public address");
 
