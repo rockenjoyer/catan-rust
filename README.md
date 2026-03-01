@@ -141,11 +141,7 @@ While every effort has been made to document the project thoroughly, some unreso
 ### Cargo features
 *Find the list and description in [cargo.toml](Cargo.toml)*
 
-
-### Limitations
-
 ## Credits
-
 ### Game Assets
 #### Sounds
 - [Placing down](
@@ -172,7 +168,7 @@ https://www.catan.de/catan-universe
 - Rest: self-made
 
 ## Disclaimer
-The use of generative AI was limited to the [Mistral Ai Le Chat](https://chat.mistral.ai/chatmodel).
+The use of generative AI was limited to the [Mistral Ai Le Chat](https://chat.mistral.ai/chat).
 
 Generative AI was exclusively employed for:
 - Error handling of non-descriptive panics or crashes
