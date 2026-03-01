@@ -1,38 +1,70 @@
 # The Settlers of Catan - Rust Edition
-LMU WS25/26 Rust SEP: Multiplayer Game Development
+### LMU WS25/26 Rust SEP: Multiplayer Game Development
+A digital implementation of "The Settlers of Catan", built in Rust using the Bevy game engine, with experimental multiplayer support.
 
+![Board](docs/images/board.png)
 ## Quickstart
-- clone -> cargo run
-- .exe
+1. git clone https://github.com/rockenjoyer/catan-rust.git
+2. cd catan-rust
+3. cargo run
 
-## Start game
+Alternatively, run the compiled .exe file (if available).
+
+## Gameplay features
 
 
-## Menu features
-#### Main Menu Buttons
-- Start Game
-- Multiplayer
-  - Host a game [see below]
-- Rules
+## Menu features and overview
+### Main Menu
+The Main Menu serves as the central "navigation hub" of the game. It provides access to gameplay, multiplayer functionality, rules, settings and game exit.
+
+![Main Menu](docs/images/main_menu.png)
+#### Start Game
+The "Start Game" button launches a local singleplayer session, where up to 4 players can technically play against each other on a single machine. The game transitions directly into the setup phase and initializes all required systems (board generation, assets, panels, audio etc.).
+
+#### Multiplayer
+Upon clicking on "Multiplayer", the multiplayer submenu opens.
+From here, players can host or join a game (see below in the multiplayer section).
+
+#### Rules
+Players have the option to read the rules to stay up-to-date. The "Rules" button opens a purely informational rules overview, which is presented in structured sections. Players can read about:
+
   1. Setup
   2. Resources
-  3. Turn structure
+  3. Turn Structure
   4. Robber
   5. Victory Points
-- Quit Game
-- Settings
-  - Music/SFX Volume
-  - Window Mode: Windowed, Borderless Fullscreen, Fullscreen
-  - Window Resolution Presets: 1280 x 720, 1920 x 1080, 2560 x 1440
-  - [Ingame only] Return to main menu
 
-#### Endscreen Buttons
-- Return to main menu
-- Credits
-  - Development Team, Bevy Game Engine & Rust Programming Language, Original Game
-- Stats
-  - Winner, Game Stats (VP, Settlement, City, Road & Resource count), Achievements (Longest Road, Largest Army)
-- Quit Game
+#### Settings
+In the bottom left corner, upon clicking on the "🔧" icon, the settings menu opens. It is also available ingame. Available options are:
+
+  - Music and SFX volume slider
+  - Window Mode: Windowed, Borderless Fullscreen & Fullscreen
+  - Resolution Presets: 1280 x 720, 1920 x 1080 & 2560 x 1440
+
+When accessed during gameplay, an additional option to "Return to Main Menu" is available.
+Settings are applied immediately, there's no need to restart the game.
+
+#### Quit Game
+The "Quit Game" button closes the application immediately, which is also available on the endscreen. Of course, it is also possible to simply close the window.
+
+### Endscreen
+The Endscreen appears once a player reaches the victory condition of 10 Victory Points. It appears similar to the main menu, with changes to the available buttons. 
+
+#### Return to Main Menu
+A "Return to Main Menu" button is now available, which also resets the current game state.
+
+#### Credits
+By clicking on the "Credits" button, various project credits will be displayed:
+  - Development Team
+  - Bevy Game Engine & Rust Programming Language
+  - Original Game Inspiration
+
+#### Stats
+The "Stats" button displays statistics of the previous gameplay. These contain:
+  - Winner
+  - Victory Points of each player
+  - Settlement-, City-, Road- & Resource count of each player
+  - Achievements: Longest Road & Largest Army
 
 ## Multiplayer
 ### Hosting a game
@@ -57,6 +89,8 @@ Connected players cannot interact directly with the game in multiplayer mode. In
 The only way to play in multiplayer is through the chat system. Players must manually type their moves and communicate them to others.
 
 While this is not ideal, it is currently the only available method for multiplayer interaction.
+
+![Chat](docs/images/chat.png)
 
 #### Lack of features and safety nets
 No graceful disconnect: If a player or host disconnects unexpectedly, the game may crash or behave unpredictably.
