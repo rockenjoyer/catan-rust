@@ -11,6 +11,37 @@ A digital implementation of "The Settlers of Catan", built in Rust using the Bev
 Alternatively, run the compiled .exe file (if available).
 
 ## Gameplay features
+### Board
+The board consists of 19 hexagonal tiles, 18 resource tiles and one desert tile; they are surrounded by the sea. Resource tiles contain one number plate each. All tiles and their number plates are always generated randomly.
+
+### Game phases
+The game consists of two phases, the setup rounds and regular play.
+
+  - During the setup rounds, all players get to pick a location for a settlement and build a road starting at its location. The pick order follows the order of the players, clockwise in the first setup round, counter-clockwise in the second one.
+  - Once regular gameplay is reached, all other features are unlocked for every player. Each turn, a set of two regular dice is rolled, both rolled numbers are added up to one final number which determines the resources that are being given out in each round according to the number plates on the resource tiles. In case a 7 is rolled, the robber has to be moved to a resource tile which gets blocked and players with too many resources are being robbed. 
+  - Regular gameplay ends as soon as a player wins (which happens after reaching 10 victory points).
+
+### Actions
+#### Spending resources
+Once a player has collected enough resources, they may construct a building on the board or buy a development card.
+  - Road: constructing a road requires one Brick and one Lumber, it may be placed originating from any existing settlement, city or road of the player. If a player has built a continuous road longer than any other player's chain with a length of at least five, they are being granted the Longest Road badge, worth two victory points.
+  - Settlement: constructing a settlement requires one Brick, one Lumber, one Grain and one Wool, it may be placed on any vertex connected to a road of the player, unless there is already a settlement or city directly adjacent to the chosen one. Settlements grant one victory point and produce one resource if a number on one of the resource tiles around it is rolled during the turn.
+  - City: upgrading a settlement to a city requires three Ore and two Grain, any settlement can be upgraded to a city. Cities grant an additional victory point and produce twice the amount of resources settlements do.
+  - Development card: buying a development card requires one Ore, one Grain and one Wool. There are five different development cards which can be played at any point during the player's turn.
+
+#### Development cards
+After buying a development card, a player has to wait one round before they may use it (except for the Victory Point card). There are five types of development cards:
+  - Knight: playing a Knight card allows the player to move the robber without relying on rolling a 7. However, players with too many resources are not being robbed in this case. If a player has more knight cards as any other player (minimum: three) they are being granted the Largest Army badge, worth two victory points.
+  - Victory point: this card grants one victory point.
+  - Monopoly: playing this card allows the player to select one resource. All other players are forced to surrender their entire stock of the chosen resource to the player.
+  - Road Building: this card allows the player to build two roads for free.
+  - Year of Plenty: this card allows the player to select two resources which they will recieve for free.
+
+#### Trading (not fully implemented yet)
+A player can trade to exchange resources. Two types of trading exist.
+  - Player trade: a player can ask other players to exchange resources, they can choose any resources and any ratio. No one is however forced to actually trade with them.
+  - Maritime trade: allows a player to trade without relying on other players. The trading ratio, however, is 4:1, but can be reduced to 3:1 or 2:1 by owning a settlement on a generic harbor or a resource-specific harbor respectively.
+Both types of trading and harbors are implemented into the game's code, but are not able to be used yet because the necessary UI is still missing.
 
 
 ## Menu features and overview
