@@ -69,7 +69,7 @@ pub fn setup_lobby_menu(
             text_with_background(ui, format!("Players connected: {}", state.users.len()), text_size);
 
             for (id, _) in state.users.iter() {
-                text_with_background(ui, format!("Player {}", id), text_size);
+                text_with_background(ui, format!("Player {}", id + 1), text_size);
             }
 
             ui.add_space(20.0);
